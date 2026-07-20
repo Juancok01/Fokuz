@@ -71,11 +71,8 @@
 
 	const fetchTasks = async () => {
 		if (!supabase) {
-			const dateStr = formatDateString(selectedDate);
-			tasks = [
-				{ id: 1, title: 'Revisar presupuesto mensual (' + dateStr + ')', is_completed: true, date: dateStr, order_index: 0, novedad: '' },
-				{ id: 2, title: 'Preparar presentación del proyecto', is_completed: false, date: dateStr, order_index: 1, novedad: 'Traer diapositivas' },
-			];
+			console.warn("Supabase no está configurado. Las tareas no se pueden cargar.");
+			tasks = [];
 			return;
 		}
 
@@ -159,7 +156,11 @@
 		if (!confirm('¿Estás seguro de que deseas eliminar esta tarea?')) return;
 
 		if (supabase) {
-			await supabase.from('tasks').delete().eq('id', selectedTaskId);
+			const { error } = await supabase.from('tasks').delete().eq('id', selectedTaskId);
+			if (error) {
+				alert("Error al eliminar la tarea: " + error.message);
+				return; // Si hay error, no la borramos localmente
+			}
 		}
 		
 		tasks = tasks.filter(t => t.id !== selectedTaskId);
