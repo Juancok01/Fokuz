@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Calendar, GripVertical, CheckCircle2, Circle, Plus, X, Flag, Bell, AlertTriangle, Trash2 } from 'lucide-svelte';
+	import { Calendar, GripVertical, CheckCircle2, Circle, Plus, X, Flag, Bell, AlertTriangle, Trash2, LogOut } from 'lucide-svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { dndzone } from 'svelte-dnd-action';
 	
@@ -214,6 +214,9 @@
 		<Calendar class="w-6 h-6 text-brand-blue" />
 		<h1 class="text-xl font-bold text-gray-900">Fokuz</h1>
 	</div>
+	<button onclick={() => supabase?.auth.signOut()} class="p-2 text-gray-400 hover:text-red-500 transition-colors" title="Cerrar sesión">
+		<LogOut class="w-5 h-5" />
+	</button>
 </header>
 
 <!-- Contenido principal -->
