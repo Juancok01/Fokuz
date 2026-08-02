@@ -304,6 +304,56 @@
 		});
 	};
 
+	const normalizeSharedTasks = (sharedData: unknown): any[] => {
+		if (Array.isArray(sharedData)) return sharedData;
+		if (typeof sharedData === 'string') {
+			try {
+				const parsed = JSON.parse(sharedData);
+				return Array.isArray(parsed) ? parsed : [];
+			} catch {
+				return [];
+			}
+		}
+		return [];
+	};
+
+	const fetchSharedTasksFallback = async (dateStr: string) => {
+		if (!supabase) return [] as any[];
+
+		const {
+			data: { session }
+		} = await supabase.auth.getSession();
+		const me = session?.user?.id;
+		if (!me) return [];
+
+		const { data: shares, error: sharesError } = await supabase
+			.from('task_shares')
+			.select('task_id')
+			.eq('shared_with', me);
+
+		if (sharesError) {
+			console.warn('Error al cargar shares:', sharesError.message);
+			return [];
+		}
+
+		const ids = [...new Set((shares ?? []).map((row) => row.task_id))];
+		if (ids.length === 0) return [];
+
+		const { data, error } = await supabase
+			.from('tasks')
+			.select('*, tags(id, name, color)')
+			.in('id', ids)
+			.eq('date', dateStr)
+			.order('order_index', { ascending: true });
+
+		if (error) {
+			console.warn('Error al cargar tareas compartidas (fallback):', error.message);
+			return [];
+		}
+
+		return data ?? [];
+	};
+
 	const fetchTasks = async () => {
 		if (!supabase) {
 			console.warn("Supabase no está configurado. Las tareas no se pueden cargar.");
@@ -328,26 +378,28 @@
 			{ target_date: dateStr }
 		);
 
-		const receivedSharedIds = new Set<number>();
-
+		let sharedList = normalizeSharedTasks(sharedData);
 		if (sharedError) {
 			console.warn('Error al cargar tareas compartidas:', sharedError.message);
-		} else {
-			const sharedList = Array.isArray(sharedData)
-				? sharedData
-				: typeof sharedData === 'string'
-					? JSON.parse(sharedData)
-					: [];
-			const existingIds = new Set(merged.map((t) => t.id));
-			for (const shared of sharedList) {
-				receivedSharedIds.add(shared.id);
-				if (!existingIds.has(shared.id)) {
-					merged = [...merged, { ...shared, is_shared: true, is_shared_with_me: true }];
-				} else {
-					merged = merged.map((t) =>
-						t.id === shared.id ? { ...t, is_shared: true, is_shared_with_me: true } : t
-					);
-				}
+			sharedList = await fetchSharedTasksFallback(dateStr);
+		} else if (sharedList.length === 0) {
+			// Si el RPC no trae nada, intenta por RLS directo (por si el SQL viejo falla)
+			const fallback = await fetchSharedTasksFallback(dateStr);
+			if (fallback.length > 0) sharedList = fallback;
+		}
+
+		const receivedSharedIds = new Set<number>();
+		const existingIds = new Set(merged.map((t) => t.id));
+		for (const shared of sharedList) {
+			if (shared?.id == null) continue;
+			receivedSharedIds.add(shared.id);
+			if (!existingIds.has(shared.id)) {
+				merged = [...merged, { ...shared, is_shared: true, is_shared_with_me: true }];
+				existingIds.add(shared.id);
+			} else {
+				merged = merged.map((t) =>
+					t.id === shared.id ? { ...t, is_shared: true, is_shared_with_me: true } : t
+				);
 			}
 		}
 
@@ -1594,6 +1646,7 @@
 				<Settings class="w-4 h-4" />
 			</button>
 			{#if showTaskOptions}
+				{@const selectedTask = tasks.find((t) => t.id === selectedTaskId)}
 				<div class="absolute bottom-full right-0 mb-2 min-w-[11rem] rounded-xl border border-brand-divider bg-brand-surface-elevated shadow-xl overflow-hidden z-10">
 					<button
 						type="button"
@@ -1603,17 +1656,19 @@
 						<Calendar class="w-4 h-4 text-brand-accent" />
 						Modificar día
 					</button>
-					<button
-						type="button"
-						class="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-						onclick={() => {
-							showTaskOptions = false;
-							deleteTask();
-						}}
-					>
-						<Trash2 class="w-4 h-4" />
-						Eliminar tarea
-					</button>
+					{#if !selectedTask?.is_shared_with_me}
+						<button
+							type="button"
+							class="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+							onclick={() => {
+								showTaskOptions = false;
+								deleteTask();
+							}}
+						>
+							<Trash2 class="w-4 h-4" />
+							Eliminar tarea
+						</button>
+					{/if}
 				</div>
 			{/if}
 		</div>
