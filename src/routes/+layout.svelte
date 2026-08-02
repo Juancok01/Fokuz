@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
+	import favicon from '$lib/assets/favicon_logo.png';
 	import { supabase } from '$lib/supabaseClient';
 	import { onMount } from 'svelte';
 	import type { Session } from '@supabase/supabase-js';
@@ -39,8 +39,12 @@
 
 <main class="max-w-md mx-auto min-h-screen bg-brand-bg relative shadow-2xl overflow-hidden flex flex-col">
 	{#if loading}
-		<div class="flex-1 flex items-center justify-center h-full">
-			<div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-accent"></div>
+		<div class="flex-1 flex flex-col items-center justify-center h-full gap-4 px-8">
+			<img src={favicon} alt="Fokuz" class="w-14 h-14 rounded-2xl logo-pulse" />
+			<p class="text-sm text-brand-text-muted">Preparando Fokuz...</p>
+			<div class="w-40 h-1.5 rounded-full bg-brand-surface overflow-hidden">
+				<div class="h-full w-1/2 rounded-full bg-brand-accent skeleton"></div>
+			</div>
 		</div>
 	{:else if !session}
 		<div class="flex-1 flex flex-col items-center justify-center p-8 space-y-8 bg-brand-bg">
@@ -54,7 +58,7 @@
 			
 			<button 
 				onclick={signInWithGoogle}
-				class="w-full flex items-center justify-center gap-3 bg-white text-gray-800 px-6 py-4 rounded-xl font-medium shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow transition-all active:scale-[0.98]"
+				class="w-full flex items-center justify-center gap-3 bg-brand-accent text-brand-bg px-6 py-4 rounded-xl font-semibold shadow-sm hover:brightness-105 transition-all active:scale-[0.98]"
 			>
 				<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" class="w-6 h-6" />
 				Continuar con Google

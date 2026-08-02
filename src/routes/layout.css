@@ -2,15 +2,60 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-brand-blue: #1E40AF;
-  --color-brand-light-blue: #EFF6FF;
-  --color-brand-bg: #F8F9FA;
+  --color-brand-bg: #2a323f;
+  --color-brand-surface: #343c4a;
+  --color-brand-surface-elevated: #3d4656;
+  --color-brand-accent: #feef4c;
+  --color-brand-accent-muted: #feef4c33;
+  --color-brand-text: #f4f5f7;
+  --color-brand-text-muted: #9aa3b2;
+  --color-brand-divider: #454e5e;
+  --color-brand-blue: #feef4c;
+  --color-brand-light-blue: #feef4c33;
   --font-sans: 'Inter', sans-serif;
 }
 
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
-    @apply bg-gray-900 text-gray-800 antialiased;
+    @apply bg-[#1e2430] text-brand-text antialiased;
+  }
+}
+
+@layer utilities {
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      #343c4a 0%,
+      #3d4656 45%,
+      #343c4a 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.2s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
+  }
+
+  .logo-pulse {
+    animation: logo-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes logo-pulse {
+    0%,
+    100% {
+      opacity: 0.45;
+      transform: scale(0.96);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 }
