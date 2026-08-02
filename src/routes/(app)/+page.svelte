@@ -65,11 +65,14 @@
 		}).format(new Date());
 
 	const resolveDisplayName = (meta: Record<string, unknown>, email?: string | null) => {
+		const displayName = typeof meta.display_name === 'string' ? meta.display_name.trim() : '';
+		if (displayName) return displayName;
+
 		const alias = typeof meta.alias === 'string' ? meta.alias.trim() : '';
 		if (alias) return alias;
 
-		const fullName = (meta.full_name || meta.name || email?.split('@')[0] || 'tú') as string;
-		return String(fullName).split(' ')[0];
+		// Sin nombre configurado: usar la parte del correo
+		return email?.split('@')[0] || 'tú';
 	};
 
 	const loadTodaySummary = async () => {
