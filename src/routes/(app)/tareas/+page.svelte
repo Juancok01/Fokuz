@@ -15,7 +15,8 @@
 		List,
 		MoreVertical,
 		ArrowLeft,
-		Settings
+		Settings,
+		Filter
 	} from 'lucide-svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { dndzone } from 'svelte-dnd-action';
@@ -61,6 +62,12 @@
 	let showCalendar = $state(false);
 	let calendarMode = $state<'navigate' | 'moveTask'>('navigate');
 	let showTags = $state(false);
+	let showFilter = $state(false);
+	let filterTagIds = $state<number[]>([]);
+	let filterSharedWithIds = $state<string[]>([]);
+	let filterSharedOnly = $state(false);
+	let filterHasLists = $state(false);
+	let filterHasNovedad = $state(false);
 	let showCrearListaModal = $state(false);
 	let showVerListasModal = $state(false);
 	let showEditListModal = $state(false);
@@ -446,20 +453,27 @@
 			}
 
 			const labelsByTask = new Map<number, string[]>();
+			const idsByTask = new Map<number, string[]>();
 			for (const row of rows) {
-				const list = labelsByTask.get(row.task_id) ?? [];
-				list.push(nameByUserId.get(row.shared_with) || 'contacto');
-				labelsByTask.set(row.task_id, list);
+				const labels = labelsByTask.get(row.task_id) ?? [];
+				labels.push(nameByUserId.get(row.shared_with) || 'contacto');
+				labelsByTask.set(row.task_id, labels);
+
+				const ids = idsByTask.get(row.task_id) ?? [];
+				ids.push(row.shared_with);
+				idsByTask.set(row.task_id, ids);
 			}
 
 			merged = merged.map((t) => {
 				const labels = labelsByTask.get(t.id) ?? [];
+				const sharedIds = idsByTask.get(t.id) ?? [];
 				const isShared =
 					Boolean(t.is_shared) || receivedSharedIds.has(t.id) || sharedOutIds.has(t.id);
 				return {
 					...t,
 					is_shared: isShared,
 					shared_with_labels: labels,
+					shared_with_ids: sharedIds,
 					has_lists: taskIdsWithLists.has(t.id)
 				};
 			});
@@ -488,7 +502,8 @@
 	};
 
 	const refreshTaskShareLabels = (taskId: number, sharedIds: Set<string>) => {
-		const labels = [...sharedIds].map((id) => {
+		const ids = [...sharedIds];
+		const labels = ids.map((id) => {
 			const contact = contacts.find((c) => c.id === id);
 			return contact ? contactLabel(contact) : 'contacto';
 		});
@@ -497,7 +512,8 @@
 				? {
 						...t,
 						is_shared: labels.length > 0 || Boolean(t.is_shared_with_me),
-						shared_with_labels: labels
+						shared_with_labels: labels,
+						shared_with_ids: ids
 					}
 				: t
 		);
@@ -1111,10 +1127,12 @@
 
 	// Handlers para el drag and drop
 	const handleDndConsider = (e: any) => {
+		if (hasActiveFilters) return;
 		tasks = e.detail.items;
 	};
 
 	const handleDndFinalize = async (e: any) => {
+		if (hasActiveFilters) return;
 		tasks = e.detail.items;
 		if (supabase) {
 			// Update order_index for all items locally
@@ -1133,6 +1151,62 @@
 
 	// Cálculo de progreso
 	let progress = $derived(tasks.length > 0 ? Math.round((tasks.filter(t => t.is_completed).length / tasks.length) * 100) : 0);
+
+	let hasActiveFilters = $derived(
+		filterTagIds.length > 0 ||
+			filterSharedWithIds.length > 0 ||
+			filterSharedOnly ||
+			filterHasLists ||
+			filterHasNovedad
+	);
+
+	let filteredTasks = $derived.by(() => {
+		if (!hasActiveFilters) return tasks;
+
+		return tasks.filter((task) => {
+			if (filterTagIds.length > 0) {
+				const tag = getTaskTag(task);
+				if (!tag || !filterTagIds.includes(tag.id)) return false;
+			}
+
+			if (filterHasNovedad && !(typeof task.novedad === 'string' && task.novedad.trim())) {
+				return false;
+			}
+
+			if (filterHasLists && !task.has_lists) return false;
+
+			if (filterSharedOnly || filterSharedWithIds.length > 0) {
+				if (!task.is_shared) return false;
+				if (filterSharedWithIds.length > 0) {
+					const sharedIds = (task.shared_with_ids ?? []) as string[];
+					if (!filterSharedWithIds.some((id) => sharedIds.includes(id))) return false;
+				}
+			}
+
+			return true;
+		});
+	});
+
+	const toggleFilterTag = (tagId: number) => {
+		filterTagIds = filterTagIds.includes(tagId)
+			? filterTagIds.filter((id) => id !== tagId)
+			: [...filterTagIds, tagId];
+	};
+
+	const toggleFilterContact = (contactId: string) => {
+		filterSharedWithIds = filterSharedWithIds.includes(contactId)
+			? filterSharedWithIds.filter((id) => id !== contactId)
+			: [...filterSharedWithIds, contactId];
+		if (filterSharedWithIds.length > 0) filterSharedOnly = true;
+	};
+
+	const clearFilters = () => {
+		filterTagIds = [];
+		filterSharedWithIds = [];
+		filterSharedOnly = false;
+		filterHasLists = false;
+		filterHasNovedad = false;
+	};
 </script>
 
 <svelte:head>
@@ -1145,14 +1219,27 @@
 		<img src={logo} alt="Fokuz" class="w-8 h-8 rounded-lg object-contain" />
 		<h1 class="text-xl font-bold text-brand-text">Tareas</h1>
 	</div>
-	<button
-		onclick={() => showTags = true}
-		class="p-2 rounded-xl text-brand-accent hover:bg-brand-accent-muted transition-colors"
-		title="Etiquetas"
-		aria-label="Gestionar etiquetas"
-	>
-		<Tag class="w-5 h-5" />
-	</button>
+	<div class="flex items-center gap-1">
+		<button
+			onclick={() => (showFilter = true)}
+			class="relative p-2 rounded-xl text-brand-accent hover:bg-brand-accent-muted transition-colors"
+			title="Filtrar"
+			aria-label="Filtrar tareas"
+		>
+			<Filter class="w-5 h-5" />
+			{#if hasActiveFilters}
+				<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-accent"></span>
+			{/if}
+		</button>
+		<button
+			onclick={() => (showTags = true)}
+			class="p-2 rounded-xl text-brand-accent hover:bg-brand-accent-muted transition-colors"
+			title="Etiquetas"
+			aria-label="Gestionar etiquetas"
+		>
+			<Tag class="w-5 h-5" />
+		</button>
+	</div>
 </header>
 
 <!-- Contenido principal -->
@@ -1181,15 +1268,31 @@
 
 	<!-- Lista de prioridades -->
 	<div class="mb-2">
-		<h2 class="text-xs font-bold text-brand-text-muted tracking-wider mb-4 uppercase">Enfoque actual</h2>
+		<div class="flex items-center justify-between gap-2 mb-4">
+			<h2 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Enfoque actual</h2>
+			{#if hasActiveFilters}
+				<button
+					type="button"
+					class="text-[11px] font-semibold text-brand-accent hover:underline"
+					onclick={clearFilters}
+				>
+					Quitar filtros
+				</button>
+			{/if}
+		</div>
 		
 		<section 
 			class="flex flex-col gap-3 min-h-[50px]" 
-			use:dndzone={{items: tasks, flipDurationMs: 200, dropTargetStyle: {}}} 
+			use:dndzone={{
+				items: filteredTasks,
+				flipDurationMs: 200,
+				dropTargetStyle: {},
+				dragDisabled: hasActiveFilters
+			}} 
 			onconsider={handleDndConsider} 
 			onfinalize={handleDndFinalize}
 		>
-			{#each tasks as task (task.id)}
+			{#each filteredTasks as task (task.id)}
 				{@const taskTag = getTaskTag(task)}
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1250,9 +1353,13 @@
 				</div>
 			{/each}
 		</section>
-		{#if tasks.length === 0}
+		{#if filteredTasks.length === 0}
 			<div class="text-center py-8 text-brand-text-muted text-sm">
-				No hay prioridades para este día.
+				{#if hasActiveFilters}
+					No hay tareas con esos filtros.
+				{:else}
+					No hay prioridades para este día.
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -1283,7 +1390,7 @@
 <!-- Modals (Bottom Sheets) -->
 
 <!-- Overlay -->
-{#if showNewTask || showTaskUpdate || showCalendar || showTags || showCrearListaModal || showVerListasModal || showEditListModal}
+{#if showNewTask || showTaskUpdate || showCalendar || showTags || showFilter || showCrearListaModal || showVerListasModal || showEditListModal}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div 
@@ -1301,11 +1408,147 @@
 				closeCalendar();
 				return;
 			}
+			if (showFilter) {
+				showFilter = false;
+				return;
+			}
 			showNewTask = false;
 			showTaskUpdate = false;
 			showTags = false;
 		}}
 	></div>
+{/if}
+
+<!-- Modal Filtros -->
+{#if showFilter}
+	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 shadow-2xl border-t border-brand-divider max-h-[90%] overflow-y-auto">
+		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
+
+		<div class="flex justify-between items-center mb-6">
+			<h3 class="text-lg font-bold text-brand-text">Filtrar</h3>
+			<button
+				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
+				onclick={() => (showFilter = false)}
+				aria-label="Cerrar"
+			>
+				<X class="w-4 h-4" />
+			</button>
+		</div>
+
+		<section class="mb-6">
+			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Tipo</p>
+			<div class="space-y-2">
+				<button
+					type="button"
+					class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {filterHasNovedad
+						? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
+						: 'border-brand-divider bg-brand-bg text-brand-text'}"
+					onclick={() => (filterHasNovedad = !filterHasNovedad)}
+				>
+					<span class="flex items-center gap-2 text-sm font-medium">
+						<StickyNote class="w-4 h-4" />
+						Con novedad
+					</span>
+					<span class="text-xs font-semibold">{filterHasNovedad ? 'Sí' : ''}</span>
+				</button>
+				<button
+					type="button"
+					class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {filterHasLists
+						? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
+						: 'border-brand-divider bg-brand-bg text-brand-text'}"
+					onclick={() => (filterHasLists = !filterHasLists)}
+				>
+					<span class="flex items-center gap-2 text-sm font-medium">
+						<ListChecks class="w-4 h-4" />
+						Con listas
+					</span>
+					<span class="text-xs font-semibold">{filterHasLists ? 'Sí' : ''}</span>
+				</button>
+				<button
+					type="button"
+					class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {filterSharedOnly
+						? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
+						: 'border-brand-divider bg-brand-bg text-brand-text'}"
+					onclick={() => {
+						filterSharedOnly = !filterSharedOnly;
+						if (!filterSharedOnly) filterSharedWithIds = [];
+					}}
+				>
+					<span class="flex items-center gap-2 text-sm font-medium">
+						<Share2 class="w-4 h-4" />
+						Compartidas
+					</span>
+					<span class="text-xs font-semibold">{filterSharedOnly ? 'Sí' : ''}</span>
+				</button>
+			</div>
+		</section>
+
+		{#if filterSharedOnly && contacts.length > 0}
+			<section class="mb-6">
+				<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Compartida con</p>
+				<div class="flex flex-wrap gap-2">
+					{#each contacts as contact (contact.id)}
+						<button
+							type="button"
+							class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {filterSharedWithIds.includes(contact.id)
+								? 'border-brand-accent bg-brand-accent text-brand-bg'
+								: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
+							onclick={() => toggleFilterContact(contact.id)}
+						>
+							{contactLabel(contact)}
+						</button>
+					{/each}
+				</div>
+				<p class="text-[11px] text-brand-text-muted mt-2">
+					Opcional: elige personas concretas. Si no eliges ninguna, muestra todas las compartidas.
+				</p>
+			</section>
+		{/if}
+
+		<section class="mb-6">
+			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Etiquetas</p>
+			{#if tags.length === 0}
+				<p class="text-sm text-brand-text-muted">Aún no tienes etiquetas.</p>
+			{:else}
+				<div class="flex flex-wrap gap-2">
+					{#each tags as tag (tag.id)}
+						<button
+							type="button"
+							class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {filterTagIds.includes(tag.id)
+								? 'border-brand-accent text-brand-bg'
+								: 'border-brand-divider bg-brand-bg text-brand-text'}"
+							style={filterTagIds.includes(tag.id)
+								? `background-color: ${tag.color}; border-color: ${tag.color}`
+								: ''}
+							onclick={() => toggleFilterTag(tag.id)}
+						>
+							<span class="w-2 h-2 rounded-full shrink-0" style="background-color: {tag.color}"></span>
+							{tag.name}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</section>
+
+		<div class="flex gap-2">
+			{#if hasActiveFilters}
+				<button
+					type="button"
+					class="flex-1 py-3.5 rounded-xl border border-brand-divider text-brand-text-muted font-semibold text-sm hover:bg-brand-bg transition-colors"
+					onclick={clearFilters}
+				>
+					Limpiar
+				</button>
+			{/if}
+			<button
+				type="button"
+				class="flex-1 py-3.5 rounded-xl bg-brand-accent text-brand-bg font-bold text-sm hover:brightness-105 transition-colors"
+				onclick={() => (showFilter = false)}
+			>
+				Ver resultados
+			</button>
+		</div>
+	</div>
 {/if}
 
 <!-- Calendario Custom Bottom Sheet -->
