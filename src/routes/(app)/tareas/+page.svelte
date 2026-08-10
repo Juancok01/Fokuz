@@ -16,12 +16,15 @@
 		MoreVertical,
 		ArrowLeft,
 		Settings,
-		Filter
+		Filter,
+		Timer
 	} from 'lucide-svelte';
+	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
 	import { dndzone } from 'svelte-dnd-action';
 	import logo from '$lib/assets/favicon_logo.png';
 	import TagSelect from '$lib/components/TagSelect.svelte';
+	import { linkPomodoroTask } from '$lib/pomodoro.svelte';
 
 	type TaskTag = { id: number; name: string; color: string };
 	type Contact = {
@@ -50,6 +53,10 @@
 	let tasks = $state<any[]>([]);
 	let tags = $state<TaskTag[]>([]);
 	let contacts = $state<Contact[]>([]);
+	let tasksLoading = $state(false);
+	let tasksRefreshing = $state(false);
+	let tasksFetchId = 0;
+	let loadedDateStr = $state<string | null>(null);
 	
 	// Inicializar la fecha a las 00:00:00 sin mutaciones externas para evitar warnings en Svelte 5
 	const initDate = new Date();
@@ -68,6 +75,7 @@
 	let filterSharedOnly = $state(false);
 	let filterHasLists = $state(false);
 	let filterHasNovedad = $state(false);
+	let filterStatus = $state<'all' | 'pending' | 'completed'>('all');
 	let showCrearListaModal = $state(false);
 	let showVerListasModal = $state(false);
 	let showEditListModal = $state(false);
@@ -156,23 +164,20 @@
 	const moveTaskToDate = async (date: Date) => {
 		if (!supabase || selectedTaskId === null) return;
 
+		const taskId = selectedTaskId;
 		const dateStr = formatDateString(date);
-		const { error } = await supabase
-			.from('tasks')
-			.update({ date: dateStr })
-			.eq('id', selectedTaskId);
-
-		if (error) {
-			closeCalendar();
-			taskActionError = error.message;
-			return;
-		}
-
-		tasks = tasks.filter((t) => t.id !== selectedTaskId);
+		const previous = tasks;
+		tasks = tasks.filter((t) => t.id !== taskId);
 		closeCalendar();
 		showTaskOptions = false;
 		showTaskUpdate = false;
-		await fetchActiveTaskDays();
+
+		const { error } = await supabase.from('tasks').update({ date: dateStr }).eq('id', taskId);
+
+		if (error) {
+			tasks = previous;
+			taskActionError = error.message;
+		}
 	};
 
 	const selectCalendarDate = async (day: number) => {
@@ -362,124 +367,149 @@
 	};
 
 	const fetchTasks = async () => {
-		if (!supabase) {
-			console.warn("Supabase no está configurado. Las tareas no se pueden cargar.");
-			tasks = [];
-			return;
-		}
-
+		const requestId = ++tasksFetchId;
 		const dateStr = formatDateString(selectedDate);
+		const keepStale = loadedDateStr === dateStr && tasks.length > 0;
 
-		const { data, error } = await supabase
-			.from('tasks')
-			.select('*, tags(id, name, color)')
-			.eq('date', dateStr)
-			.order('order_index', { ascending: true });
-			
-		if (error) alert("Error al cargar: " + error.message);
-
-		let merged = data ?? [];
-
-		const { data: sharedData, error: sharedError } = await supabase.rpc(
-			'get_shared_tasks_for_date',
-			{ target_date: dateStr }
-		);
-
-		let sharedList = normalizeSharedTasks(sharedData);
-		if (sharedError) {
-			console.warn('Error al cargar tareas compartidas:', sharedError.message);
-			sharedList = await fetchSharedTasksFallback(dateStr);
-		} else if (sharedList.length === 0) {
-			// Si el RPC no trae nada, intenta por RLS directo (por si el SQL viejo falla)
-			const fallback = await fetchSharedTasksFallback(dateStr);
-			if (fallback.length > 0) sharedList = fallback;
+		if (keepStale) {
+			tasksRefreshing = true;
+		} else {
+			tasksLoading = true;
+			if (loadedDateStr !== dateStr) tasks = [];
 		}
 
-		const receivedSharedIds = new Set<number>();
-		const existingIds = new Set(merged.map((t) => t.id));
-		for (const shared of sharedList) {
-			if (shared?.id == null) continue;
-			receivedSharedIds.add(shared.id);
-			if (!existingIds.has(shared.id)) {
-				merged = [...merged, { ...shared, is_shared: true, is_shared_with_me: true }];
-				existingIds.add(shared.id);
-			} else {
-				merged = merged.map((t) =>
-					t.id === shared.id ? { ...t, is_shared: true, is_shared_with_me: true } : t
-				);
+		try {
+			if (!supabase) {
+				console.warn('Supabase no está configurado. Las tareas no se pueden cargar.');
+				if (requestId === tasksFetchId) {
+					tasks = [];
+					loadedDateStr = dateStr;
+				}
+				return;
 			}
-		}
 
-		// Marcar tareas compartidas y resolver "Compartida con: alias"
-		const taskIds = merged.map((t) => t.id);
-		const taskIdsWithLists = new Set<number>();
-		if (taskIds.length > 0) {
-			const [{ data: shareRows }, { data: listRows }] = await Promise.all([
+			const [ownResult, sharedResult] = await Promise.all([
 				supabase
-					.from('task_shares')
-					.select('task_id, shared_with')
-					.in('task_id', taskIds),
-				supabase.from('task_lists').select('task_id').in('task_id', taskIds)
+					.from('tasks')
+					.select('*, tags(id, name, color)')
+					.eq('date', dateStr)
+					.order('order_index', { ascending: true }),
+				supabase.rpc('get_shared_tasks_for_date', { target_date: dateStr })
 			]);
 
-			for (const row of listRows ?? []) {
-				taskIdsWithLists.add(row.task_id);
+			if (requestId !== tasksFetchId) return;
+
+			if (ownResult.error) alert('Error al cargar: ' + ownResult.error.message);
+
+			let merged = ownResult.data ?? [];
+
+			let sharedList = normalizeSharedTasks(sharedResult.data);
+			if (sharedResult.error) {
+				console.warn('Error al cargar tareas compartidas:', sharedResult.error.message);
+				sharedList = await fetchSharedTasksFallback(dateStr);
+			} else if (sharedList.length === 0) {
+				// Si el RPC no trae nada, intenta por RLS directo (por si el SQL viejo falla)
+				const fallback = await fetchSharedTasksFallback(dateStr);
+				if (fallback.length > 0) sharedList = fallback;
 			}
 
-			const rows = shareRows ?? [];
-			const sharedOutIds = new Set(rows.map((row) => row.task_id));
-			const sharedUserIds = [...new Set(rows.map((row) => row.shared_with))];
+			if (requestId !== tasksFetchId) return;
 
-			const nameByUserId = new Map<string, string>();
-			if (sharedUserIds.length > 0) {
-				const [{ data: contactRows }, { data: profiles }] = await Promise.all([
-					supabase
-						.from('contacts')
-						.select('contact_user_id, nickname')
-						.in('contact_user_id', sharedUserIds),
-					supabase.from('profiles').select('id, email, display_name').in('id', sharedUserIds)
-				]);
-
-				for (const profile of profiles ?? []) {
-					nameByUserId.set(
-						profile.id,
-						(profile.display_name || '').trim() || profile.email.split('@')[0]
+			const receivedSharedIds = new Set<number>();
+			const existingIds = new Set(merged.map((t) => t.id));
+			for (const shared of sharedList) {
+				if (shared?.id == null) continue;
+				receivedSharedIds.add(shared.id);
+				if (!existingIds.has(shared.id)) {
+					merged = [...merged, { ...shared, is_shared: true, is_shared_with_me: true }];
+					existingIds.add(shared.id);
+				} else {
+					merged = merged.map((t) =>
+						t.id === shared.id ? { ...t, is_shared: true, is_shared_with_me: true } : t
 					);
 				}
-				for (const contact of contactRows ?? []) {
-					const nick = (contact.nickname || '').trim();
-					if (nick) nameByUserId.set(contact.contact_user_id, nick);
+			}
+
+			// Marcar tareas compartidas y resolver "Compartida con: alias"
+			const taskIds = merged.map((t) => t.id);
+			const taskIdsWithLists = new Set<number>();
+			if (taskIds.length > 0) {
+				const [{ data: shareRows }, { data: listRows }] = await Promise.all([
+					supabase
+						.from('task_shares')
+						.select('task_id, shared_with')
+						.in('task_id', taskIds),
+					supabase.from('task_lists').select('task_id').in('task_id', taskIds)
+				]);
+
+				if (requestId !== tasksFetchId) return;
+
+				for (const row of listRows ?? []) {
+					taskIdsWithLists.add(row.task_id);
 				}
+
+				const rows = shareRows ?? [];
+				const sharedOutIds = new Set(rows.map((row) => row.task_id));
+				const sharedUserIds = [...new Set(rows.map((row) => row.shared_with))];
+
+				const nameByUserId = new Map<string, string>();
+				for (const contact of contacts) {
+					nameByUserId.set(contact.id, contactLabel(contact));
+				}
+
+				const missingIds = sharedUserIds.filter((id) => !nameByUserId.has(id));
+				if (missingIds.length > 0) {
+					const { data: profiles } = await supabase
+						.from('profiles')
+						.select('id, email, display_name')
+						.in('id', missingIds);
+
+					if (requestId !== tasksFetchId) return;
+
+					for (const profile of profiles ?? []) {
+						nameByUserId.set(
+							profile.id,
+							(profile.display_name || '').trim() || profile.email.split('@')[0]
+						);
+					}
+				}
+
+				const labelsByTask = new Map<number, string[]>();
+				const idsByTask = new Map<number, string[]>();
+				for (const row of rows) {
+					const labels = labelsByTask.get(row.task_id) ?? [];
+					labels.push(nameByUserId.get(row.shared_with) || 'contacto');
+					labelsByTask.set(row.task_id, labels);
+
+					const ids = idsByTask.get(row.task_id) ?? [];
+					ids.push(row.shared_with);
+					idsByTask.set(row.task_id, ids);
+				}
+
+				merged = merged.map((t) => {
+					const labels = labelsByTask.get(t.id) ?? [];
+					const sharedIds = idsByTask.get(t.id) ?? [];
+					const isShared =
+						Boolean(t.is_shared) || receivedSharedIds.has(t.id) || sharedOutIds.has(t.id);
+					return {
+						...t,
+						is_shared: isShared,
+						shared_with_labels: labels,
+						shared_with_ids: sharedIds,
+						has_lists: taskIdsWithLists.has(t.id)
+					};
+				});
 			}
 
-			const labelsByTask = new Map<number, string[]>();
-			const idsByTask = new Map<number, string[]>();
-			for (const row of rows) {
-				const labels = labelsByTask.get(row.task_id) ?? [];
-				labels.push(nameByUserId.get(row.shared_with) || 'contacto');
-				labelsByTask.set(row.task_id, labels);
-
-				const ids = idsByTask.get(row.task_id) ?? [];
-				ids.push(row.shared_with);
-				idsByTask.set(row.task_id, ids);
+			if (requestId !== tasksFetchId) return;
+			tasks = merged;
+			loadedDateStr = dateStr;
+		} finally {
+			if (requestId === tasksFetchId) {
+				tasksLoading = false;
+				tasksRefreshing = false;
 			}
-
-			merged = merged.map((t) => {
-				const labels = labelsByTask.get(t.id) ?? [];
-				const sharedIds = idsByTask.get(t.id) ?? [];
-				const isShared =
-					Boolean(t.is_shared) || receivedSharedIds.has(t.id) || sharedOutIds.has(t.id);
-				return {
-					...t,
-					is_shared: isShared,
-					shared_with_labels: labels,
-					shared_with_ids: sharedIds,
-					has_lists: taskIdsWithLists.has(t.id)
-				};
-			});
 		}
-
-		tasks = merged;
 	};
 
 	const setTaskHasLists = (taskId: number, hasLists: boolean) => {
@@ -563,6 +593,7 @@
 
 	// Efecto para recargar tareas cuando cambia la fecha
 	$effect(() => {
+		void selectedDate;
 		fetchTasks();
 	});
 
@@ -572,15 +603,25 @@
 	});
 
 	const toggleTask = async (id: number) => {
-		const task = tasks.find(t => t.id === id);
-		if (task) {
-			task.is_completed = !task.is_completed;
-			if (supabase) {
-				const { error } = await supabase.from('tasks').update({ is_completed: task.is_completed }).eq('id', id);
-				if (error) alert("Error al actualizar: " + error.message);
+		const task = tasks.find((t) => t.id === id);
+		if (!task) return;
+
+		const previous = task.is_completed;
+		task.is_completed = !task.is_completed;
+
+		if (supabase) {
+			const { error } = await supabase
+				.from('tasks')
+				.update({ is_completed: task.is_completed })
+				.eq('id', id);
+			if (error) {
+				task.is_completed = previous;
+				alert('Error al actualizar: ' + error.message);
+				return;
 			}
-			await fetchActiveTaskDays();
 		}
+
+		if (showCalendar) await fetchActiveTaskDays();
 	};
 
 	const openNewTask = () => {
@@ -591,37 +632,49 @@
 
 	const addTask = async () => {
 		if (!newTaskTitle.trim()) return;
-		
+
+		const tag = tags.find((t) => t.id === selectedTagId) ?? null;
 		const newTask = {
-			title: newTaskTitle,
+			title: newTaskTitle.trim(),
 			is_completed: false,
 			date: formatDateString(selectedDate),
 			order_index: tasks.length,
 			novedad: '',
 			tag_id: selectedTagId
 		};
-
-		if (supabase) {
-			const { data, error } = await supabase
-				.from('tasks')
-				.insert([newTask])
-				.select('*, tags(id, name, color)');
-			if (error) {
-				alert("Error al crear tarea: " + error.message);
-				return;
+		const tempId = -Date.now();
+		tasks = [
+			...tasks,
+			{
+				id: tempId,
+				...newTask,
+				tags: tag,
+				is_shared: false,
+				has_lists: false
 			}
-			if (data) {
-				tasks = [...tasks, { ...data[0] }];
-			}
-		} else {
-			const tag = tags.find((t) => t.id === selectedTagId) ?? null;
-			tasks = [...tasks, { id: Date.now(), ...newTask, tags: tag }];
-		}
-		
+		];
 		newTaskTitle = '';
 		selectedTagId = null;
 		showNewTask = false;
-		await fetchActiveTaskDays();
+
+		if (!supabase) return;
+
+		const { data, error } = await supabase
+			.from('tasks')
+			.insert([newTask])
+			.select('*, tags(id, name, color)');
+
+		if (error) {
+			tasks = tasks.filter((t) => t.id !== tempId);
+			alert('Error al crear tarea: ' + error.message);
+			return;
+		}
+
+		if (data?.[0]) {
+			tasks = tasks.map((t) => (t.id === tempId ? { ...data[0], has_lists: false } : t));
+		}
+
+		if (showCalendar) await fetchActiveTaskDays();
 	};
 
 	const loadTaskShares = async (taskId: number) => {
@@ -996,20 +1049,63 @@
 		}
 	};
 
+	const saveTaskDetails = async () => {
+		if (selectedTaskId === null) return;
+
+		const title = selectedTaskTitle.trim();
+		if (!title) {
+			taskActionError = 'El título no puede estar vacío.';
+			return;
+		}
+
+		const taskIndex = tasks.findIndex((t) => t.id === selectedTaskId);
+		if (taskIndex === -1) return;
+
+		const previous = {
+			title: tasks[taskIndex].title,
+			tag_id: tasks[taskIndex].tag_id ?? null,
+			tags: tasks[taskIndex].tags ?? null
+		};
+		const nextTag = tags.find((t) => t.id === editingTagId) ?? null;
+
+		tasks[taskIndex].title = title;
+		tasks[taskIndex].tag_id = editingTagId;
+		tasks[taskIndex].tags = nextTag;
+		selectedTaskTitle = title;
+		taskActionError = '';
+
+		if (supabase) {
+			const { error } = await supabase
+				.from('tasks')
+				.update({ title, tag_id: editingTagId })
+				.eq('id', selectedTaskId);
+			if (error) {
+				tasks[taskIndex].title = previous.title;
+				tasks[taskIndex].tag_id = previous.tag_id;
+				tasks[taskIndex].tags = previous.tags;
+				selectedTaskTitle = previous.title;
+				taskActionError = error.message;
+				return;
+			}
+		}
+
+		taskActionSuccess = 'Tarea actualizada.';
+	};
+
 	const saveNovedad = async () => {
 		if (selectedTaskId === null) return;
-		
-		const taskIndex = tasks.findIndex(t => t.id === selectedTaskId);
+
+		const taskIndex = tasks.findIndex((t) => t.id === selectedTaskId);
 		if (taskIndex !== -1) {
+			const previous = tasks[taskIndex].novedad;
 			tasks[taskIndex].novedad = editingNovedad;
-			tasks[taskIndex].tag_id = editingTagId;
-			tasks[taskIndex].tags = tags.find((t) => t.id === editingTagId) ?? null;
 			if (supabase) {
 				const { error } = await supabase
 					.from('tasks')
-					.update({ novedad: editingNovedad, tag_id: editingTagId })
+					.update({ novedad: editingNovedad })
 					.eq('id', selectedTaskId);
 				if (error) {
+					tasks[taskIndex].novedad = previous;
 					taskActionError = error.message;
 					return;
 				}
@@ -1082,21 +1178,25 @@
 
 	const deleteTask = async () => {
 		if (selectedTaskId === null) return;
-		
-		// Confirmación simple
+
 		if (!confirm('¿Estás seguro de que deseas eliminar esta tarea?')) return;
 
+		const taskId = selectedTaskId;
+		const previous = tasks;
+		tasks = tasks.filter((t) => t.id !== taskId);
+		showTaskUpdate = false;
+		showTaskOptions = false;
+
 		if (supabase) {
-			const { error } = await supabase.from('tasks').delete().eq('id', selectedTaskId);
+			const { error } = await supabase.from('tasks').delete().eq('id', taskId);
 			if (error) {
-				alert("Error al eliminar la tarea: " + error.message);
-				return; // Si hay error, no la borramos localmente
+				tasks = previous;
+				alert('Error al eliminar la tarea: ' + error.message);
+				return;
 			}
 		}
-		
-		tasks = tasks.filter(t => t.id !== selectedTaskId);
-		showTaskUpdate = false;
-		await fetchActiveTaskDays();
+
+		if (showCalendar) await fetchActiveTaskDays();
 	};
 
 	const setDate = (offset: number) => {
@@ -1153,7 +1253,8 @@
 	let progress = $derived(tasks.length > 0 ? Math.round((tasks.filter(t => t.is_completed).length / tasks.length) * 100) : 0);
 
 	let hasActiveFilters = $derived(
-		filterTagIds.length > 0 ||
+		filterStatus !== 'all' ||
+			filterTagIds.length > 0 ||
 			filterSharedWithIds.length > 0 ||
 			filterSharedOnly ||
 			filterHasLists ||
@@ -1164,6 +1265,9 @@
 		if (!hasActiveFilters) return tasks;
 
 		return tasks.filter((task) => {
+			if (filterStatus === 'pending' && task.is_completed) return false;
+			if (filterStatus === 'completed' && !task.is_completed) return false;
+
 			if (filterTagIds.length > 0) {
 				const tag = getTaskTag(task);
 				if (!tag || !filterTagIds.includes(tag.id)) return false;
@@ -1201,11 +1305,20 @@
 	};
 
 	const clearFilters = () => {
+		filterStatus = 'all';
 		filterTagIds = [];
 		filterSharedWithIds = [];
 		filterSharedOnly = false;
 		filterHasLists = false;
 		filterHasNovedad = false;
+	};
+
+	const focusOnSelectedTask = () => {
+		if (selectedTaskId == null) return;
+		linkPomodoroTask(selectedTaskId, selectedTaskTitle || 'Tarea');
+		showTaskOptions = false;
+		showTaskUpdate = false;
+		goto('/pomodoro');
 	};
 </script>
 
@@ -1270,24 +1383,36 @@
 	<div class="mb-2">
 		<div class="flex items-center justify-between gap-2 mb-4">
 			<h2 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Enfoque actual</h2>
-			{#if hasActiveFilters}
-				<button
-					type="button"
-					class="text-[11px] font-semibold text-brand-accent hover:underline"
-					onclick={clearFilters}
-				>
-					Quitar filtros
-				</button>
-			{/if}
+			<div class="flex items-center gap-2">
+				{#if tasksRefreshing}
+					<span class="text-[11px] text-brand-text-muted">Actualizando…</span>
+				{/if}
+				{#if hasActiveFilters}
+					<button
+						type="button"
+						class="text-[11px] font-semibold text-brand-accent hover:underline"
+						onclick={clearFilters}
+					>
+						Quitar filtros
+					</button>
+				{/if}
+			</div>
 		</div>
-		
+
+		{#if tasksLoading && tasks.length === 0}
+			<div class="flex flex-col gap-3">
+				{#each [1, 2, 3] as _}
+					<div class="h-[68px] rounded-2xl bg-brand-surface skeleton"></div>
+				{/each}
+			</div>
+		{:else}
 		<section 
 			class="flex flex-col gap-3 min-h-[50px]" 
 			use:dndzone={{
 				items: filteredTasks,
-				flipDurationMs: 200,
+				flipDurationMs: 180,
 				dropTargetStyle: {},
-				dragDisabled: hasActiveFilters
+				dragDisabled: hasActiveFilters || tasksRefreshing
 			}} 
 			onconsider={handleDndConsider} 
 			onfinalize={handleDndFinalize}
@@ -1297,7 +1422,7 @@
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div 
-					class="flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-200 border-l-4 {selectedTaskId === task.id ? 'bg-brand-surface-elevated border-brand-accent shadow-md' : 'bg-brand-surface border-transparent hover:bg-brand-surface-elevated'}"
+					class="flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-colors duration-200 border-l-4 {selectedTaskId === task.id ? 'bg-brand-surface-elevated border-brand-accent shadow-md' : 'bg-brand-surface border-transparent hover:bg-brand-surface-elevated'}"
 					onclick={() => openTaskUpdate(task)}
 				>
 					<div class="flex items-center gap-4 flex-1 min-w-0">
@@ -1362,6 +1487,7 @@
 				{/if}
 			</div>
 		{/if}
+		{/if}
 	</div>
 
 	<!-- Barra de progreso -->
@@ -1394,7 +1520,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div 
-		class="absolute inset-0 bg-black/40 backdrop-blur-sm z-30 transition-opacity"
+		class="absolute inset-0 bg-black/50 z-30 transition-opacity"
 		onclick={() => {
 			if (showEditListModal) {
 				closeEditListModal();
@@ -1434,6 +1560,39 @@
 				<X class="w-4 h-4" />
 			</button>
 		</div>
+
+		<section class="mb-6">
+			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Estado</p>
+			<div class="grid grid-cols-3 gap-2">
+				<button
+					type="button"
+					class="py-2.5 rounded-xl text-xs font-semibold border transition-colors {filterStatus === 'all'
+						? 'border-brand-accent bg-brand-accent text-brand-bg'
+						: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
+					onclick={() => (filterStatus = 'all')}
+				>
+					Todas
+				</button>
+				<button
+					type="button"
+					class="py-2.5 rounded-xl text-xs font-semibold border transition-colors {filterStatus === 'pending'
+						? 'border-brand-accent bg-brand-accent text-brand-bg'
+						: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
+					onclick={() => (filterStatus = 'pending')}
+				>
+					Pendientes
+				</button>
+				<button
+					type="button"
+					class="py-2.5 rounded-xl text-xs font-semibold border transition-colors {filterStatus === 'completed'
+						? 'border-brand-accent bg-brand-accent text-brand-bg'
+						: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
+					onclick={() => (filterStatus = 'completed')}
+				>
+					Completadas
+				</button>
+			</div>
+		</section>
 
 		<section class="mb-6">
 			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Tipo</p>
@@ -1752,7 +1911,6 @@
 				<X class="w-4 h-4" />
 			</button>
 		</div>
-		<p class="text-sm text-brand-text-muted mb-5 truncate">{selectedTaskTitle}</p>
 
 		<div class="grid grid-cols-3 gap-2 mb-5">
 			<button
@@ -1788,8 +1946,39 @@
 		</div>
 
 		{#if taskPanel === 'menu'}
-			<p class="text-sm text-brand-text-muted mb-5">
-				Elige una opción para gestionar esta tarea.
+			<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2" for="edit-task-title">
+				Título
+			</label>
+			<input
+				id="edit-task-title"
+				type="text"
+				bind:value={selectedTaskTitle}
+				class="w-full bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-4"
+				placeholder="Nombre de la tarea"
+			/>
+
+			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Etiqueta</p>
+			<div class="mb-4">
+				<TagSelect tags={tags} bind:value={editingTagId} id="edit-task-tag" />
+			</div>
+
+			<button
+				type="button"
+				class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-3.5 rounded-xl transition-colors mb-3"
+				onclick={saveTaskDetails}
+			>
+				Guardar cambios
+			</button>
+			<button
+				type="button"
+				class="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-brand-accent/60 text-brand-accent font-semibold hover:bg-brand-accent-muted transition-colors mb-3"
+				onclick={focusOnSelectedTask}
+			>
+				<Timer class="w-5 h-5" />
+				Enfocar con Pomodoro
+			</button>
+			<p class="text-sm text-brand-text-muted mb-2">
+				O elige una opción arriba para novedad, compartir o listas.
 			</p>
 		{:else if taskPanel === 'listas'}
 			<p class="text-sm text-brand-text-muted mb-3">

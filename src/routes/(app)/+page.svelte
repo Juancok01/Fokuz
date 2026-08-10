@@ -1,28 +1,38 @@
 <script lang="ts">
-	import { Calendar, ListChecks } from 'lucide-svelte';
+	import { Calendar, Check, Circle, ListChecks, RefreshCw } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
 	import logo from '$lib/assets/favicon_logo.png';
+	import {
+		formatDateInTz,
+		getWeekdayInTz,
+		habitIsScheduledOn,
+		normalizeWeekdays,
+		type Habit
+	} from '$lib/habits';
 
-	const COLOMBIA_TZ = 'America/Bogota';
+	type TodayHabit = Habit & { done: boolean };
 
 	let userName = $state('tú');
 	let pendingCount = $state(0);
 	let completedCount = $state(0);
+	let todayHabits = $state<TodayHabit[]>([]);
 	let loading = $state(true);
+	let hasLoaded = $state(false);
+	let habitToggleBusy = $state<number | null>(null);
 
 	const todayLabel = $derived.by(() => {
 		const weekday = new Intl.DateTimeFormat('es-CO', {
-			timeZone: COLOMBIA_TZ,
+			timeZone: 'America/Bogota',
 			weekday: 'long'
 		}).format(new Date());
 		const day = new Intl.DateTimeFormat('es-CO', {
-			timeZone: COLOMBIA_TZ,
+			timeZone: 'America/Bogota',
 			day: 'numeric'
 		}).format(new Date());
 		const month = new Intl.DateTimeFormat('es-CO', {
-			timeZone: COLOMBIA_TZ,
+			timeZone: 'America/Bogota',
 			month: 'short'
 		})
 			.format(new Date())
@@ -35,7 +45,7 @@
 	const greeting = $derived.by(() => {
 		const hour = Number(
 			new Intl.DateTimeFormat('en-GB', {
-				timeZone: COLOMBIA_TZ,
+				timeZone: 'America/Bogota',
 				hour: '2-digit',
 				hour12: false
 			}).format(new Date())
@@ -49,20 +59,15 @@
 	const totalCount = $derived(pendingCount + completedCount);
 	const progress = $derived(totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0);
 
+	const habitsPending = $derived(todayHabits.filter((h) => !h.done).length);
+	const habitsDone = $derived(todayHabits.filter((h) => h.done).length);
+
 	const statusMessage = $derived.by(() => {
 		if (totalCount === 0) return 'No tienes tareas para hoy. ¡Buen momento para planear!';
 		if (pendingCount === 0) return 'Completaste todas tus tareas de hoy. ¡Excelente!';
 		if (pendingCount === 1) return 'Tienes 1 tarea pendiente para hoy. ¡Vamos por ella!';
 		return `Tienes ${pendingCount} tareas pendientes para hoy. ¡Vamos por ellas!`;
 	});
-
-	const formatDateColombia = () =>
-		new Intl.DateTimeFormat('en-CA', {
-			timeZone: COLOMBIA_TZ,
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit'
-		}).format(new Date());
 
 	const resolveDisplayName = (meta: Record<string, unknown>, email?: string | null) => {
 		const displayName = typeof meta.display_name === 'string' ? meta.display_name.trim() : '';
@@ -71,47 +76,112 @@
 		const alias = typeof meta.alias === 'string' ? meta.alias.trim() : '';
 		if (alias) return alias;
 
-		// Sin nombre configurado: usar la parte del correo
 		return email?.split('@')[0] || 'tú';
 	};
 
-	const loadTodaySummary = async () => {
-		loading = true;
+	const loadTodaySummary = async (opts?: { silent?: boolean }) => {
+		const silent = Boolean(opts?.silent && hasLoaded);
+		if (!silent) loading = true;
 
 		try {
 			if (!supabase) {
 				pendingCount = 0;
 				completedCount = 0;
+				todayHabits = [];
 				return;
 			}
 
-			// getSession es local y más estable que getUser (evita quedarse colgado)
-			const {
-				data: { session }
-			} = await supabase.auth.getSession();
+			const today = formatDateInTz();
+			const weekday = getWeekdayInTz();
+
+			// getSession es local; tareas + hábitos en paralelo
+			const [
+				{
+					data: { session }
+				},
+				tasksResult,
+				habitsResult,
+				logsResult
+			] = await Promise.all([
+				supabase.auth.getSession(),
+				supabase.from('tasks').select('id, is_completed').eq('date', today),
+				supabase.from('habits').select('id, name, weekdays').order('created_at', { ascending: true }),
+				supabase.from('habit_logs').select('habit_id').eq('date', today)
+			]);
 
 			userName = resolveDisplayName(session?.user?.user_metadata ?? {}, session?.user?.email);
 
-			const { data, error } = await supabase
-				.from('tasks')
-				.select('id, is_completed')
-				.eq('date', formatDateColombia());
-
-			if (error) {
-				console.warn('Error al cargar resumen:', error.message);
+			if (tasksResult.error) {
+				console.warn('Error al cargar resumen:', tasksResult.error.message);
 				pendingCount = 0;
 				completedCount = 0;
 			} else {
-				const rows = data ?? [];
+				const rows = tasksResult.data ?? [];
 				pendingCount = rows.filter((t) => !t.is_completed).length;
 				completedCount = rows.filter((t) => t.is_completed).length;
+			}
+
+			if (habitsResult.error) {
+				// Tabla aún no creada u otro error: no romper Inicio
+				if (!/habit/i.test(habitsResult.error.message)) {
+					console.warn('Error al cargar hábitos:', habitsResult.error.message);
+				}
+				todayHabits = [];
+			} else {
+				const doneIds = new Set((logsResult.data ?? []).map((row) => row.habit_id));
+				todayHabits = (habitsResult.data ?? [])
+					.map((h) => ({
+						id: h.id,
+						name: h.name,
+						weekdays: normalizeWeekdays(h.weekdays),
+						done: doneIds.has(h.id)
+					}))
+					.filter((h) => habitIsScheduledOn(h, weekday));
 			}
 		} catch (err) {
 			console.warn('Error inesperado al cargar Inicio:', err);
 			pendingCount = 0;
 			completedCount = 0;
+			todayHabits = [];
 		} finally {
 			loading = false;
+			hasLoaded = true;
+		}
+	};
+
+	const toggleTodayHabit = async (habit: TodayHabit) => {
+		if (!supabase || habitToggleBusy === habit.id) return;
+
+		const previous = habit.done;
+		habit.done = !habit.done;
+		todayHabits = [...todayHabits];
+		habitToggleBusy = habit.id;
+
+		const today = formatDateInTz();
+
+		try {
+			if (previous) {
+				const { error } = await supabase
+					.from('habit_logs')
+					.delete()
+					.eq('habit_id', habit.id)
+					.eq('date', today);
+				if (error) {
+					habit.done = previous;
+					todayHabits = [...todayHabits];
+				}
+			} else {
+				const { error } = await supabase.from('habit_logs').insert({
+					habit_id: habit.id,
+					date: today
+				});
+				if (error) {
+					habit.done = previous;
+					todayHabits = [...todayHabits];
+				}
+			}
+		} finally {
+			if (habitToggleBusy === habit.id) habitToggleBusy = null;
 		}
 	};
 
@@ -120,8 +190,8 @@
 	});
 
 	afterNavigate(({ from }) => {
-		// Recargar al volver desde otra pestaña (Perfil, Tareas, etc.)
-		if (from) loadTodaySummary();
+		// Refresco en segundo plano al volver (sin skeleton)
+		if (from) loadTodaySummary({ silent: true });
 	});
 </script>
 
@@ -171,7 +241,7 @@
 			<div class="flex items-center gap-3">
 				<div class="h-2 flex-1 bg-brand-surface-elevated rounded-full overflow-hidden">
 					<div
-						class="h-full bg-brand-accent rounded-full transition-all duration-500 ease-out"
+						class="h-full bg-brand-accent rounded-full transition-[width] duration-500 ease-out"
 						style="width: {progress}%"
 					></div>
 				</div>
@@ -186,4 +256,60 @@
 	>
 		Ver tareas de hoy
 	</a>
+
+	<!-- F-IN-03: hábitos de hoy -->
+	<section class="mt-8">
+		<div class="flex items-center justify-between mb-3">
+			<div class="flex items-center gap-2">
+				<RefreshCw class="w-4 h-4 text-brand-accent" />
+				<h3 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Hábitos de hoy</h3>
+			</div>
+			{#if !loading && todayHabits.length > 0}
+				<span class="text-[11px] text-brand-text-muted">{habitsDone}/{todayHabits.length}</span>
+			{/if}
+		</div>
+
+		{#if loading}
+			<div class="space-y-2">
+				{#each [1, 2] as _}
+					<div class="h-12 rounded-xl bg-brand-surface skeleton"></div>
+				{/each}
+			</div>
+		{:else if todayHabits.length === 0}
+			<div class="rounded-xl border border-brand-divider bg-brand-surface px-4 py-4">
+				<p class="text-sm text-brand-text-muted mb-3">No tienes hábitos programados para hoy.</p>
+				<a href="/habitos" class="text-sm font-semibold text-brand-accent hover:underline">Ir a Hábitos</a>
+			</div>
+		{:else}
+			<ul class="space-y-2">
+				{#each todayHabits as habit (habit.id)}
+					<li>
+						<button
+							type="button"
+							class="w-full flex items-center gap-3 rounded-xl border border-brand-divider bg-brand-surface px-4 py-3 text-left transition-colors hover:bg-brand-surface-elevated"
+							onclick={() => toggleTodayHabit(habit)}
+						>
+							{#if habit.done}
+								<Check class="w-5 h-5 text-brand-accent shrink-0" />
+							{:else}
+								<Circle class="w-5 h-5 text-brand-text-muted shrink-0" />
+							{/if}
+							<span
+								class="text-sm font-medium truncate {habit.done
+									? 'text-brand-text-muted line-through'
+									: 'text-brand-text'}"
+							>
+								{habit.name}
+							</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+			{#if habitsPending > 0}
+				<p class="mt-2 text-[11px] text-brand-text-muted">
+					{habitsPending} por marcar · toca para completar
+				</p>
+			{/if}
+		{/if}
+	</section>
 </div>
