@@ -91,6 +91,11 @@
 	let formError = $state('');
 	let formBusy = $state(false);
 	let toggleBusyKey = $state<string | null>(null);
+	/** false si falta la columna icon en Supabase (SQL 010) */
+	let iconsPersist = $state(true);
+
+	const ICON_SQL_HINT =
+		'No se pudo guardar el icono. En Supabase → SQL Editor ejecuta el archivo 010_habit_icon.sql y vuelve a intentar.';
 
 	const dayCount = $derived(daysInMonth(viewYear, viewMonth));
 	const todayKey = $derived(formatDateInTz());
@@ -169,11 +174,14 @@
 			]);
 
 			// Compat: si aún no corrieron 010_habit_icon.sql
-			if (habitsResult.error && /icon/i.test(habitsResult.error.message)) {
+			if (habitsResult.error && /icon|schema cache/i.test(habitsResult.error.message)) {
+				iconsPersist = false;
 				habitsResult = await supabase
 					.from('habits')
 					.select('id, name, weekdays')
 					.order('created_at', { ascending: true });
+			} else if (!habitsResult.error) {
+				iconsPersist = true;
 			}
 
 			if (requestId !== fetchId) return;
@@ -189,7 +197,7 @@
 				id: h.id,
 				name: h.name,
 				weekdays: normalizeWeekdays(h.weekdays),
-				icon: normalizeHabitIcon((h as { icon?: string }).icon)
+				icon: normalizeHabitIcon((h as { icon?: string | null }).icon)
 			}));
 
 			doneKeys = new Set(
@@ -280,50 +288,44 @@
 		formBusy = true;
 		formError = '';
 
-		const tempId = -Date.now();
-		const optimistic: Habit = {
-			id: tempId,
-			name,
-			weekdays: [...formWeekdays],
-			icon: formIcon
-		};
-		habits = [...habits, optimistic];
-		sheetMode = 'closed';
-
 		try {
-			if (!supabase) return;
+			if (!supabase) {
+				const tempId = -Date.now();
+				habits = [
+					...habits,
+					{ id: tempId, name, weekdays: [...formWeekdays], icon: formIcon }
+				];
+				sheetMode = 'closed';
+				return;
+			}
 
-			let { data, error } = await supabase
+			const { data, error } = await supabase
 				.from('habits')
 				.insert([{ name, weekdays: formWeekdays, icon: formIcon }])
 				.select('id, name, weekdays, icon')
 				.single();
 
-			if (error && /icon/i.test(error.message)) {
-				({ data, error } = await supabase
-					.from('habits')
-					.insert([{ name, weekdays: formWeekdays }])
-					.select('id, name, weekdays')
-					.single());
-			}
-
 			if (error) {
-				habits = habits.filter((h) => h.id !== tempId);
-				formError = error.message;
-				sheetMode = 'create';
+				if (/icon|schema cache/i.test(error.message)) {
+					iconsPersist = false;
+					formError = ICON_SQL_HINT;
+				} else {
+					formError = error.message;
+				}
 				return;
 			}
 
-			habits = habits.map((h) =>
-				h.id === tempId
-					? {
-							id: data.id,
-							name: data.name,
-							weekdays: normalizeWeekdays(data.weekdays),
-							icon: normalizeHabitIcon((data as { icon?: string }).icon) || formIcon
-						}
-					: h
-			);
+			iconsPersist = true;
+			habits = [
+				...habits,
+				{
+					id: data.id,
+					name: data.name,
+					weekdays: normalizeWeekdays(data.weekdays),
+					icon: normalizeHabitIcon(data.icon)
+				}
+			];
+			sheetMode = 'closed';
 		} finally {
 			formBusy = false;
 		}
@@ -343,40 +345,56 @@
 
 		const habitId = selectedHabit.id;
 		const previous = selectedHabit;
-		const next: Habit = {
-			id: habitId,
-			name,
-			weekdays: [...formWeekdays],
-			icon: formIcon
-		};
-
-		habits = habits.map((h) => (h.id === habitId ? next : h));
-		selectedHabit = next;
-		sheetMode = 'detail';
 		formBusy = true;
 		formError = '';
 
 		try {
-			if (!supabase || habitId < 0) return;
+			if (!supabase || habitId < 0) {
+				const next: Habit = {
+					id: habitId,
+					name,
+					weekdays: [...formWeekdays],
+					icon: formIcon
+				};
+				habits = habits.map((h) => (h.id === habitId ? next : h));
+				selectedHabit = next;
+				sheetMode = 'detail';
+				return;
+			}
 
-			let { error } = await supabase
+			const { data, error } = await supabase
 				.from('habits')
 				.update({ name, weekdays: formWeekdays, icon: formIcon })
-				.eq('id', habitId);
-
-			if (error && /icon/i.test(error.message)) {
-				({ error } = await supabase
-					.from('habits')
-					.update({ name, weekdays: formWeekdays })
-					.eq('id', habitId));
-			}
+				.eq('id', habitId)
+				.select('id, name, weekdays, icon')
+				.single();
 
 			if (error) {
-				habits = habits.map((h) => (h.id === habitId ? previous : h));
-				selectedHabit = previous;
-				formError = error.message;
+				if (/icon|schema cache/i.test(error.message)) {
+					iconsPersist = false;
+					formError = ICON_SQL_HINT;
+				} else {
+					formError = error.message;
+				}
 				sheetMode = 'edit';
+				return;
 			}
+
+			iconsPersist = true;
+			const saved: Habit = {
+				id: data.id,
+				name: data.name,
+				weekdays: normalizeWeekdays(data.weekdays),
+				icon: normalizeHabitIcon(data.icon)
+			};
+			habits = habits.map((h) => (h.id === habitId ? saved : h));
+			selectedHabit = saved;
+			sheetMode = 'detail';
+		} catch {
+			habits = habits.map((h) => (h.id === habitId ? previous : h));
+			selectedHabit = previous;
+			formError = 'No se pudo guardar el hábito.';
+			sheetMode = 'edit';
 		} finally {
 			formBusy = false;
 		}
@@ -493,6 +511,15 @@
 			<ChevronRight class="w-5 h-5" />
 		</button>
 	</div>
+
+	{#if !iconsPersist}
+		<div
+			class="mx-2 mb-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200"
+		>
+			Los iconos no se están guardando. Ejecuta en Supabase el SQL
+			<span class="font-semibold">010_habit_icon.sql</span> y recarga.
+		</div>
+	{/if}
 
 	{#if habits.length > 0}
 		<div class="flex flex-wrap items-center justify-center gap-3 px-2 mb-4 text-[10px] text-brand-text-muted">
