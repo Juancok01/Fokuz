@@ -35,7 +35,11 @@
 	};
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+	<link rel="icon" type="image/png" href="/favicon.png" />
+	<link rel="icon" type="image/png" href={favicon} />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+</svelte:head>
 
 <main class="max-w-md mx-auto min-h-screen bg-brand-bg relative shadow-2xl overflow-hidden flex flex-col">
 	{#if loading}

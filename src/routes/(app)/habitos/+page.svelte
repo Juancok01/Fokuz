@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Check, ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2, X } from 'lucide-svelte';
+	import { untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import {
 		WEEKDAY_LABELS,
@@ -117,10 +118,13 @@
 		}
 	};
 
+	// Solo reaccionar al mes; untrack evita bucle con habits/loading
 	$effect(() => {
 		void viewYear;
 		void viewMonth;
-		loadMonth();
+		untrack(() => {
+			loadMonth();
+		});
 	});
 
 	const prevMonth = () => {

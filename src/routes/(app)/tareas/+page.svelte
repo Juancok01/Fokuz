@@ -20,6 +20,7 @@
 		Timer
 	} from 'lucide-svelte';
 	import { goto } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { dndzone } from 'svelte-dnd-action';
 	import logo from '$lib/assets/favicon_logo.png';
@@ -591,15 +592,19 @@
 		await fetchTasks();
 	};
 
-	// Efecto para recargar tareas cuando cambia la fecha
+	// Solo reaccionar al cambio de fecha; untrack evita bucle con tasks/loading
 	$effect(() => {
 		void selectedDate;
-		fetchTasks();
+		untrack(() => {
+			fetchTasks();
+		});
 	});
 
 	$effect(() => {
-		fetchTags();
-		fetchContacts();
+		untrack(() => {
+			fetchTags();
+			fetchContacts();
+		});
 	});
 
 	const toggleTask = async (id: number) => {
