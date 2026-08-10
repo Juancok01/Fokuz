@@ -9,6 +9,8 @@ export const pomodoro = $state({
 	phase: 'focus' as PomodoroPhase,
 	remainingMs: FOCUS_MS,
 	running: false,
+	/** true cuando el ciclo terminó y suena hasta pulsar OK */
+	awaitingAck: false,
 	sessions: 0,
 	linkedTaskId: null as number | null,
 	linkedTaskTitle: ''
@@ -16,6 +18,7 @@ export const pomodoro = $state({
 
 let endsAt: number | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+let alarmTimer: ReturnType<typeof setInterval> | null = null;
 
 const clearTick = () => {
 	if (tickTimer != null) {
@@ -24,40 +27,48 @@ const clearTick = () => {
 	}
 };
 
+const clearAlarm = () => {
+	if (alarmTimer != null) {
+		clearInterval(alarmTimer);
+		alarmTimer = null;
+	}
+};
+
 const playChime = () => {
 	try {
-		const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+		const Ctx =
+			window.AudioContext ||
+			(window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
 		const ctx = new Ctx();
 		const osc = ctx.createOscillator();
 		const gain = ctx.createGain();
 		osc.type = 'sine';
 		osc.frequency.value = 880;
-		gain.gain.value = 0.07;
+		gain.gain.value = 0.08;
 		osc.connect(gain);
 		gain.connect(ctx.destination);
 		osc.start();
-		gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
-		osc.stop(ctx.currentTime + 0.45);
+		gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+		osc.stop(ctx.currentTime + 0.4);
 		osc.onended = () => ctx.close();
 	} catch {
 		/* sin audio disponible */
 	}
 };
 
+const startAlarm = () => {
+	clearAlarm();
+	playChime();
+	alarmTimer = setInterval(playChime, 1100);
+};
+
 const completePhase = () => {
 	clearTick();
 	pomodoro.running = false;
 	endsAt = null;
-	playChime();
-
-	if (pomodoro.phase === 'focus') {
-		pomodoro.sessions += 1;
-		pomodoro.phase = 'break';
-		pomodoro.remainingMs = BREAK_MS;
-	} else {
-		pomodoro.phase = 'focus';
-		pomodoro.remainingMs = FOCUS_MS;
-	}
+	pomodoro.remainingMs = 0;
+	pomodoro.awaitingAck = true;
+	startAlarm();
 };
 
 const syncRemaining = () => {
@@ -75,7 +86,7 @@ export const formatPomodoroTime = (ms: number = pomodoro.remainingMs) => {
 };
 
 export const startPomodoro = () => {
-	if (pomodoro.running) return;
+	if (pomodoro.running || pomodoro.awaitingAck) return;
 	if (pomodoro.remainingMs <= 0) {
 		pomodoro.remainingMs = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
 	}
@@ -86,23 +97,47 @@ export const startPomodoro = () => {
 };
 
 export const pausePomodoro = () => {
-	if (!pomodoro.running) return;
+	if (!pomodoro.running || pomodoro.awaitingAck) return;
 	syncRemaining();
 	pomodoro.running = false;
 	endsAt = null;
 	clearTick();
 };
 
+/** Confirma el fin del ciclo: apaga el pito y prepara la siguiente fase. */
+export const acknowledgePomodoro = () => {
+	if (!pomodoro.awaitingAck) return;
+
+	clearAlarm();
+	pomodoro.awaitingAck = false;
+	pomodoro.running = false;
+	endsAt = null;
+
+	if (pomodoro.phase === 'focus') {
+		pomodoro.sessions += 1;
+		pomodoro.phase = 'break';
+		pomodoro.remainingMs = BREAK_MS;
+	} else {
+		pomodoro.phase = 'focus';
+		pomodoro.remainingMs = FOCUS_MS;
+	}
+};
+
 export const resetPomodoro = () => {
 	clearTick();
+	clearAlarm();
 	pomodoro.running = false;
+	pomodoro.awaitingAck = false;
 	endsAt = null;
 	pomodoro.remainingMs = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
 };
 
 export const setPomodoroPhase = (phase: PomodoroPhase) => {
+	if (pomodoro.running || pomodoro.awaitingAck) return;
 	clearTick();
+	clearAlarm();
 	pomodoro.running = false;
+	pomodoro.awaitingAck = false;
 	endsAt = null;
 	pomodoro.phase = phase;
 	pomodoro.remainingMs = phase === 'focus' ? FOCUS_MS : BREAK_MS;

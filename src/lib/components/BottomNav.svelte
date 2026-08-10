@@ -22,7 +22,7 @@
 			label: 'Foco',
 			icon: Timer,
 			match: (path: string) => path.startsWith('/pomodoro'),
-			live: () => pomodoro.running
+			live: () => pomodoro.running || pomodoro.awaitingAck
 		},
 		{ href: '/perfil', label: 'Perfil', icon: User, match: (path: string) => path.startsWith('/perfil') }
 	];

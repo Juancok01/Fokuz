@@ -9,11 +9,13 @@
 		Coffee,
 		Target,
 		X,
-		ListChecks
+		ListChecks,
+		Check
 	} from 'lucide-svelte';
 	import {
 		BREAK_MS,
 		FOCUS_MS,
+		acknowledgePomodoro,
 		clearPomodoroTask,
 		formatPomodoroTime,
 		pausePomodoro,
@@ -26,10 +28,19 @@
 	const progress = $derived.by(() => {
 		const total = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
 		if (total <= 0) return 0;
+		if (pomodoro.awaitingAck) return 100;
 		return Math.min(100, Math.max(0, ((total - pomodoro.remainingMs) / total) * 100));
 	});
 
 	const phaseLabel = $derived(pomodoro.phase === 'focus' ? 'Enfoque' : 'Descanso');
+
+	const statusLabel = $derived.by(() => {
+		if (pomodoro.awaitingAck) {
+			return pomodoro.phase === 'focus' ? 'Enfoque terminado' : 'Descanso terminado';
+		}
+		if (pomodoro.running) return 'En curso';
+		return 'Listo';
+	});
 
 	onMount(() => {
 		const taskIdRaw = page.url.searchParams.get('task');
@@ -63,15 +74,14 @@
 </header>
 
 <div class="flex-1 overflow-y-auto px-6 py-6 pb-28 flex flex-col">
-	<!-- Fase -->
 	<div class="grid grid-cols-2 gap-2 mb-8">
 		<button
 			type="button"
 			class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border transition-colors {pomodoro.phase === 'focus'
 				? 'border-brand-accent bg-brand-accent text-brand-bg'
-				: 'border-brand-divider bg-brand-surface text-brand-text-muted'}"
+				: 'border-brand-divider bg-brand-surface text-brand-text-muted'} disabled:opacity-50"
 			onclick={() => setPomodoroPhase('focus')}
-			disabled={pomodoro.running}
+			disabled={pomodoro.running || pomodoro.awaitingAck}
 		>
 			<Target class="w-4 h-4" />
 			Enfoque · 25
@@ -80,18 +90,23 @@
 			type="button"
 			class="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold border transition-colors {pomodoro.phase === 'break'
 				? 'border-brand-accent bg-brand-accent text-brand-bg'
-				: 'border-brand-divider bg-brand-surface text-brand-text-muted'}"
+				: 'border-brand-divider bg-brand-surface text-brand-text-muted'} disabled:opacity-50"
 			onclick={() => setPomodoroPhase('break')}
-			disabled={pomodoro.running}
+			disabled={pomodoro.running || pomodoro.awaitingAck}
 		>
 			<Coffee class="w-4 h-4" />
 			Descanso · 5
 		</button>
 	</div>
 
-	<!-- Reloj -->
 	<div class="flex-1 flex flex-col items-center justify-center min-h-[280px]">
-		<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-4">{phaseLabel}</p>
+		<p
+			class="text-xs font-bold tracking-wider uppercase mb-4 {pomodoro.awaitingAck
+				? 'text-brand-accent'
+				: 'text-brand-text-muted'}"
+		>
+			{phaseLabel}
+		</p>
 
 		<div class="relative w-56 h-56 mb-6">
 			<svg class="w-full h-full -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
@@ -121,13 +136,21 @@
 				<span class="text-5xl font-bold tabular-nums text-brand-text tracking-tight">
 					{formatPomodoroTime(pomodoro.remainingMs)}
 				</span>
-				<span class="text-xs text-brand-text-muted mt-1">
-					{pomodoro.running ? 'En curso' : 'Listo'}
+				<span
+					class="text-xs mt-1 {pomodoro.awaitingAck
+						? 'text-brand-accent font-semibold'
+						: 'text-brand-text-muted'}"
+				>
+					{statusLabel}
 				</span>
 			</div>
 		</div>
 
-		{#if pomodoro.linkedTaskTitle}
+		{#if pomodoro.awaitingAck}
+			<p class="text-sm text-brand-accent text-center mb-6 max-w-xs font-medium">
+				El pito seguirá hasta que pulses OK.
+			</p>
+		{:else if pomodoro.linkedTaskTitle}
 			<div
 				class="w-full max-w-sm flex items-center gap-3 rounded-xl border border-brand-accent/50 bg-brand-surface px-4 py-3 mb-6"
 			>
@@ -154,14 +177,25 @@
 		<div class="flex items-center gap-3">
 			<button
 				type="button"
-				class="w-14 h-14 rounded-full border border-brand-divider bg-brand-surface text-brand-text-muted hover:text-brand-text transition-colors flex items-center justify-center"
+				class="w-14 h-14 rounded-full border border-brand-divider bg-brand-surface text-brand-text-muted hover:text-brand-text transition-colors flex items-center justify-center disabled:opacity-40"
 				onclick={resetPomodoro}
 				aria-label="Reiniciar"
+				disabled={pomodoro.awaitingAck}
 			>
 				<RotateCcw class="w-5 h-5" />
 			</button>
 
-			{#if pomodoro.running}
+			{#if pomodoro.awaitingAck}
+				<button
+					type="button"
+					class="w-20 h-20 rounded-full bg-brand-accent text-brand-bg font-bold flex flex-col items-center justify-center hover:brightness-105 transition-colors shadow-lg shadow-black/20"
+					onclick={acknowledgePomodoro}
+					aria-label="OK, continuar"
+				>
+					<Check class="w-7 h-7" strokeWidth={3} />
+					<span class="text-xs font-bold mt-0.5">OK</span>
+				</button>
+			{:else if pomodoro.running}
 				<button
 					type="button"
 					class="w-20 h-20 rounded-full bg-brand-accent text-brand-bg font-bold flex items-center justify-center hover:brightness-105 transition-colors shadow-lg shadow-black/20"
@@ -192,6 +226,6 @@
 	</div>
 
 	<p class="text-[11px] text-brand-text-muted text-center mt-8">
-		Al terminar un ciclo pasa solo al siguiente. El timer sigue si cambias de pestaña.
+		Al terminar suena hasta pulsar OK. Luego queda listo el siguiente ciclo (descanso o enfoque).
 	</p>
 </div>
