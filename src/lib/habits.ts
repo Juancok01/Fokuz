@@ -8,6 +8,8 @@ export type Habit = {
 	weekdays: number[];
 };
 
+export type HabitHealth = 'green' | 'yellow' | 'red' | 'neutral';
+
 /** Etiquetas cortas: Dom … Sáb (índice = Date.getDay()). */
 export const WEEKDAY_LABELS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'] as const;
 
@@ -67,3 +69,38 @@ export const formatDayKey = (year: number, month: number, day: number) => {
 
 export const weekdayForMonthDay = (year: number, month: number, day: number) =>
 	new Date(year, month, day).getDay();
+
+/** Abreviatura corta para la matriz; el nombre completo se muestra al tocar. */
+export const abbreviateHabitName = (name: string, max = 9) => {
+	const t = name.trim().replace(/\s+/g, ' ');
+	if (!t) return '';
+	if (t.length <= max) return t;
+
+	const first = t.split(' ')[0] ?? t;
+	if (first.length >= 3 && first.length <= max - 1) return `${first}…`;
+	return `${t.slice(0, max - 1)}…`;
+};
+
+/**
+ * Salud del hábito según % de cumplimiento del mes:
+ * ≥70 verde · 30–69 amarillo · &lt;30 rojo · sin días programados = neutro
+ */
+export const habitHealthFromPct = (pct: number, total: number): HabitHealth => {
+	if (total <= 0) return 'neutral';
+	if (pct >= 70) return 'green';
+	if (pct >= 30) return 'yellow';
+	return 'red';
+};
+
+export const habitHealthLabel = (health: HabitHealth) => {
+	switch (health) {
+		case 'green':
+			return 'En buen camino';
+		case 'yellow':
+			return 'Regular';
+		case 'red':
+			return 'Bajo';
+		default:
+			return 'Sin datos';
+	}
+};
