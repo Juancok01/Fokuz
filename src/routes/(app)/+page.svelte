@@ -4,10 +4,12 @@
 	import { afterNavigate } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
 	import logo from '$lib/assets/favicon_logo.png';
+	import HabitIcon from '$lib/components/HabitIcon.svelte';
 	import {
 		formatDateInTz,
 		getWeekdayInTz,
 		habitIsScheduledOn,
+		normalizeHabitIcon,
 		normalizeWeekdays,
 		type Habit
 	} from '$lib/habits';
@@ -100,12 +102,15 @@
 					data: { session }
 				},
 				tasksResult,
-				habitsResult,
+				habitsWithIcon,
 				logsResult
 			] = await Promise.all([
 				supabase.auth.getSession(),
 				supabase.from('tasks').select('id, is_completed').eq('date', today),
-				supabase.from('habits').select('id, name, weekdays').order('created_at', { ascending: true }),
+				supabase
+					.from('habits')
+					.select('id, name, weekdays, icon')
+					.order('created_at', { ascending: true }),
 				supabase.from('habit_logs').select('habit_id').eq('date', today)
 			]);
 
@@ -121,6 +126,14 @@
 				completedCount = rows.filter((t) => t.is_completed).length;
 			}
 
+			let habitsResult = habitsWithIcon;
+			if (habitsResult.error && /icon/i.test(habitsResult.error.message)) {
+				habitsResult = await supabase
+					.from('habits')
+					.select('id, name, weekdays')
+					.order('created_at', { ascending: true });
+			}
+
 			if (habitsResult.error) {
 				// Tabla aún no creada u otro error: no romper Inicio
 				if (!/habit/i.test(habitsResult.error.message)) {
@@ -134,6 +147,7 @@
 						id: h.id,
 						name: h.name,
 						weekdays: normalizeWeekdays(h.weekdays),
+						icon: normalizeHabitIcon((h as { icon?: string }).icon),
 						done: doneIds.has(h.id)
 					}))
 					.filter((h) => habitIsScheduledOn(h, weekday));
@@ -294,6 +308,9 @@
 							{:else}
 								<Circle class="w-5 h-5 text-brand-text-muted shrink-0" />
 							{/if}
+							<span class="text-brand-accent shrink-0">
+								<HabitIcon icon={habit.icon} class="w-4 h-4" />
+							</span>
 							<span
 								class="text-sm font-medium truncate {habit.done
 									? 'text-brand-text-muted line-through'

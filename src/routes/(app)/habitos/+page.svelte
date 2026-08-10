@@ -11,20 +11,23 @@
 	} from 'lucide-svelte';
 	import { untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
+	import HabitIcon from '$lib/components/HabitIcon.svelte';
 	import {
+		HABIT_ICON_OPTIONS,
 		WEEKDAY_LABELS,
 		WEEKDAY_NAMES,
-		abbreviateHabitName,
 		daysInMonth,
 		formatDateInTz,
 		formatDayKey,
 		habitHealthFromPct,
 		habitHealthLabel,
 		habitIsScheduledOn,
+		normalizeHabitIcon,
 		normalizeWeekdays,
 		weekdayForMonthDay,
 		type Habit,
-		type HabitHealth
+		type HabitHealth,
+		type HabitIconId
 	} from '$lib/habits';
 
 	const MONTH_NAMES = [
@@ -83,6 +86,7 @@
 	let sheetMode = $state<'closed' | 'create' | 'detail' | 'edit'>('closed');
 	let selectedHabit = $state<Habit | null>(null);
 	let formName = $state('');
+	let formIcon = $state<HabitIconId>('sparkles');
 	let formWeekdays = $state<number[]>([1, 2, 3, 4, 5]);
 	let formError = $state('');
 	let formBusy = $state(false);
@@ -156,10 +160,21 @@
 			const start = formatDayKey(year, month, 1);
 			const end = formatDayKey(year, month, days);
 
-			const [habitsResult, logsResult] = await Promise.all([
-				supabase.from('habits').select('id, name, weekdays').order('created_at', { ascending: true }),
+			let [habitsResult, logsResult] = await Promise.all([
+				supabase
+					.from('habits')
+					.select('id, name, weekdays, icon')
+					.order('created_at', { ascending: true }),
 				supabase.from('habit_logs').select('habit_id, date').gte('date', start).lte('date', end)
 			]);
+
+			// Compat: si aún no corrieron 010_habit_icon.sql
+			if (habitsResult.error && /icon/i.test(habitsResult.error.message)) {
+				habitsResult = await supabase
+					.from('habits')
+					.select('id, name, weekdays')
+					.order('created_at', { ascending: true });
+			}
 
 			if (requestId !== fetchId) return;
 
@@ -173,7 +188,8 @@
 			habits = (habitsResult.data ?? []).map((h) => ({
 				id: h.id,
 				name: h.name,
-				weekdays: normalizeWeekdays(h.weekdays)
+				weekdays: normalizeWeekdays(h.weekdays),
+				icon: normalizeHabitIcon((h as { icon?: string }).icon)
 			}));
 
 			doneKeys = new Set(
@@ -220,6 +236,7 @@
 	const openCreate = () => {
 		selectedHabit = null;
 		formName = '';
+		formIcon = 'sparkles';
 		formWeekdays = [1, 2, 3, 4, 5];
 		formError = '';
 		sheetMode = 'create';
@@ -234,6 +251,7 @@
 	const openEdit = () => {
 		if (!selectedHabit) return;
 		formName = selectedHabit.name;
+		formIcon = selectedHabit.icon;
 		formWeekdays = [...selectedHabit.weekdays];
 		formError = '';
 		sheetMode = 'edit';
@@ -263,18 +281,31 @@
 		formError = '';
 
 		const tempId = -Date.now();
-		const optimistic: Habit = { id: tempId, name, weekdays: [...formWeekdays] };
+		const optimistic: Habit = {
+			id: tempId,
+			name,
+			weekdays: [...formWeekdays],
+			icon: formIcon
+		};
 		habits = [...habits, optimistic];
 		sheetMode = 'closed';
 
 		try {
 			if (!supabase) return;
 
-			const { data, error } = await supabase
+			let { data, error } = await supabase
 				.from('habits')
-				.insert([{ name, weekdays: formWeekdays }])
-				.select('id, name, weekdays')
+				.insert([{ name, weekdays: formWeekdays, icon: formIcon }])
+				.select('id, name, weekdays, icon')
 				.single();
+
+			if (error && /icon/i.test(error.message)) {
+				({ data, error } = await supabase
+					.from('habits')
+					.insert([{ name, weekdays: formWeekdays }])
+					.select('id, name, weekdays')
+					.single());
+			}
 
 			if (error) {
 				habits = habits.filter((h) => h.id !== tempId);
@@ -285,7 +316,12 @@
 
 			habits = habits.map((h) =>
 				h.id === tempId
-					? { id: data.id, name: data.name, weekdays: normalizeWeekdays(data.weekdays) }
+					? {
+							id: data.id,
+							name: data.name,
+							weekdays: normalizeWeekdays(data.weekdays),
+							icon: normalizeHabitIcon((data as { icon?: string }).icon) || formIcon
+						}
 					: h
 			);
 		} finally {
@@ -307,7 +343,12 @@
 
 		const habitId = selectedHabit.id;
 		const previous = selectedHabit;
-		const next: Habit = { id: habitId, name, weekdays: [...formWeekdays] };
+		const next: Habit = {
+			id: habitId,
+			name,
+			weekdays: [...formWeekdays],
+			icon: formIcon
+		};
 
 		habits = habits.map((h) => (h.id === habitId ? next : h));
 		selectedHabit = next;
@@ -318,10 +359,17 @@
 		try {
 			if (!supabase || habitId < 0) return;
 
-			const { error } = await supabase
+			let { error } = await supabase
 				.from('habits')
-				.update({ name, weekdays: formWeekdays })
+				.update({ name, weekdays: formWeekdays, icon: formIcon })
 				.eq('id', habitId);
+
+			if (error && /icon/i.test(error.message)) {
+				({ error } = await supabase
+					.from('habits')
+					.update({ name, weekdays: formWeekdays })
+					.eq('id', habitId));
+			}
 
 			if (error) {
 				habits = habits.map((h) => (h.id === habitId ? previous : h));
@@ -490,7 +538,7 @@
 			<table class="border-separate border-spacing-y-2 border-spacing-x-1 min-w-max">
 				<thead>
 					<tr>
-						<th class="sticky left-0 z-10 bg-brand-bg pr-2 text-left w-[5.75rem]">
+						<th class="sticky left-0 z-10 bg-brand-bg pr-1.5 text-left w-11">
 							<span class="sr-only">Hábito</span>
 						</th>
 						{#each dayNumbers as day (day)}
@@ -510,17 +558,22 @@
 						{@const stats = habitStats.get(habit.id)}
 						{@const health = stats?.health ?? 'neutral'}
 						<tr>
-							<th class="sticky left-0 z-10 bg-brand-bg pr-2 text-left align-middle w-[5.75rem]">
+							<th class="sticky left-0 z-10 bg-brand-bg pr-1.5 text-left align-middle w-11">
 								<button
 									type="button"
-									class="w-full flex items-center gap-1.5 text-left rounded-lg px-1.5 py-1.5 hover:bg-brand-surface transition-colors"
+									class="relative w-9 h-9 rounded-xl border border-brand-divider bg-brand-surface flex items-center justify-center transition-colors hover:border-brand-accent/50 {healthTextClass(
+										health
+									)}"
 									onclick={() => openDetail(habit)}
 									title={habit.name}
+									aria-label={habit.name}
 								>
-									<span class="w-2 h-2 rounded-full shrink-0 {healthDotClass(health)}"></span>
-									<span class="text-xs font-semibold truncate {healthTextClass(health)}">
-										{abbreviateHabitName(habit.name)}
-									</span>
+									<HabitIcon icon={habit.icon} class="w-4 h-4" />
+									<span
+										class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-brand-bg {healthDotClass(
+											health
+										)}"
+									></span>
 								</button>
 							</th>
 							{#each dayNumbers as day (day)}
@@ -557,7 +610,7 @@
 			</table>
 		</div>
 		<p class="text-[11px] text-brand-text-muted px-2 mt-2">
-			Toca el nombre para ver el hábito completo, editarlo o borrarlo. Toca una celda para marcar el día.
+			Toca el icono para ver el nombre, editar o borrar. Toca una celda para marcar el día.
 		</p>
 	{/if}
 </div>
@@ -584,9 +637,18 @@
 
 		{#if sheetMode === 'detail' && selectedHabit}
 			<div class="flex justify-between items-start gap-3 mb-4">
-				<div class="min-w-0">
-					<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-1">Hábito</p>
-					<h3 class="text-lg font-bold text-brand-text break-words">{selectedHabit.name}</h3>
+				<div class="flex items-start gap-3 min-w-0">
+					<span
+						class="w-11 h-11 rounded-xl border border-brand-divider bg-brand-bg flex items-center justify-center shrink-0 {healthTextClass(
+							selectedStats?.health ?? 'neutral'
+						)}"
+					>
+						<HabitIcon icon={selectedHabit.icon} class="w-5 h-5" />
+					</span>
+					<div class="min-w-0">
+						<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-1">Hábito</p>
+						<h3 class="text-lg font-bold text-brand-text break-words">{selectedHabit.name}</h3>
+					</div>
 				</div>
 				<button
 					type="button"
@@ -682,6 +744,25 @@
 				placeholder="Ej. Meditar, Leer, Ejercicio…"
 				class="w-full bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-5"
 			/>
+
+			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Icono</p>
+			<div class="grid grid-cols-5 gap-2 mb-5">
+				{#each HABIT_ICON_OPTIONS as opt (opt.id)}
+					<button
+						type="button"
+						class="aspect-square rounded-xl flex items-center justify-center border transition-colors {formIcon ===
+						opt.id
+							? 'border-brand-accent bg-brand-accent text-brand-bg'
+							: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
+						title={opt.label}
+						aria-label={opt.label}
+						aria-pressed={formIcon === opt.id}
+						onclick={() => (formIcon = opt.id)}
+					>
+						<HabitIcon icon={opt.id} class="w-5 h-5" />
+					</button>
+				{/each}
+			</div>
 
 			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Frecuencia</p>
 			<div class="grid grid-cols-7 gap-2 mb-2">

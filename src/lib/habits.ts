@@ -2,13 +2,56 @@
 
 export const COLOMBIA_TZ = 'America/Bogota';
 
+export type HabitIconId =
+	| 'sparkles'
+	| 'droplets'
+	| 'book'
+	| 'dumbbell'
+	| 'brain'
+	| 'moon'
+	| 'sun'
+	| 'heart'
+	| 'leaf'
+	| 'music'
+	| 'coffee'
+	| 'footprints'
+	| 'pen'
+	| 'smartphone'
+	| 'utensils';
+
 export type Habit = {
 	id: number;
 	name: string;
 	weekdays: number[];
+	icon: HabitIconId;
 };
 
 export type HabitHealth = 'green' | 'yellow' | 'red' | 'neutral';
+
+export const HABIT_ICON_OPTIONS: { id: HabitIconId; label: string }[] = [
+	{ id: 'sparkles', label: 'General' },
+	{ id: 'droplets', label: 'Agua' },
+	{ id: 'book', label: 'Lectura' },
+	{ id: 'dumbbell', label: 'Ejercicio' },
+	{ id: 'brain', label: 'Mente' },
+	{ id: 'moon', label: 'Sueño' },
+	{ id: 'sun', label: 'Mañana' },
+	{ id: 'heart', label: 'Salud' },
+	{ id: 'leaf', label: 'Naturaleza' },
+	{ id: 'music', label: 'Música' },
+	{ id: 'coffee', label: 'Café' },
+	{ id: 'footprints', label: 'Caminar' },
+	{ id: 'pen', label: 'Escribir' },
+	{ id: 'smartphone', label: 'Digital' },
+	{ id: 'utensils', label: 'Comida' }
+];
+
+const ICON_IDS = new Set<string>(HABIT_ICON_OPTIONS.map((o) => o.id));
+
+export const normalizeHabitIcon = (raw: unknown): HabitIconId => {
+	if (typeof raw === 'string' && ICON_IDS.has(raw)) return raw as HabitIconId;
+	return 'sparkles';
+};
 
 /** Etiquetas cortas: Dom … Sáb (índice = Date.getDay()). */
 export const WEEKDAY_LABELS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'] as const;
@@ -69,17 +112,6 @@ export const formatDayKey = (year: number, month: number, day: number) => {
 
 export const weekdayForMonthDay = (year: number, month: number, day: number) =>
 	new Date(year, month, day).getDay();
-
-/** Abreviatura corta para la matriz; el nombre completo se muestra al tocar. */
-export const abbreviateHabitName = (name: string, max = 9) => {
-	const t = name.trim().replace(/\s+/g, ' ');
-	if (!t) return '';
-	if (t.length <= max) return t;
-
-	const first = t.split(' ')[0] ?? t;
-	if (first.length >= 3 && first.length <= max - 1) return `${first}…`;
-	return `${t.slice(0, max - 1)}…`;
-};
 
 /**
  * Salud del hábito según % de cumplimiento del mes:
