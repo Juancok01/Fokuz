@@ -148,7 +148,7 @@
 
 		{#if pomodoro.awaitingAck}
 			<p class="text-sm text-brand-accent text-center mb-6 max-w-xs font-medium">
-				El pito seguirá hasta que pulses OK.
+				Pulsa Ok para continuar
 			</p>
 		{:else if pomodoro.linkedTaskTitle}
 			<div
