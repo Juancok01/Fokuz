@@ -1,10 +1,16 @@
 <script lang="ts">
-	import { Calendar, Check, Circle, ListChecks, RefreshCw } from 'lucide-svelte';
+	import { BookOpen, Calendar, Check, Circle, ListChecks, RefreshCw } from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
 	import logo from '$lib/assets/favicon_logo.png';
 	import HabitIcon from '$lib/components/HabitIcon.svelte';
+	import {
+		getLocalDailyVerse,
+		readCachedDailyVerse,
+		writeCachedDailyVerse,
+		type DailyVerse
+	} from '$lib/dailyVerse';
 	import {
 		formatDateInTz,
 		getWeekdayInTz,
@@ -20,6 +26,8 @@
 	let pendingCount = $state(0);
 	let completedCount = $state(0);
 	let todayHabits = $state<TodayHabit[]>([]);
+	let dailyVerse = $state<DailyVerse | null>(null);
+	let verseLoading = $state(true);
 	let loading = $state(true);
 	let hasLoaded = $state(false);
 	let habitToggleBusy = $state<number | null>(null);
@@ -79,6 +87,34 @@
 		if (alias) return alias;
 
 		return email?.split('@')[0] || 'tú';
+	};
+
+	const loadDailyVerse = async (opts?: { silent?: boolean }) => {
+		const today = formatDateInTz();
+		const cached = readCachedDailyVerse(today);
+		if (cached) {
+			dailyVerse = cached;
+			verseLoading = false;
+			if (opts?.silent) return;
+		} else if (!opts?.silent) {
+			dailyVerse = getLocalDailyVerse(today);
+			verseLoading = true;
+		}
+
+		try {
+			const res = await fetch('/api/verse-of-day');
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = (await res.json()) as DailyVerse;
+			if (data?.text && data?.reference) {
+				dailyVerse = data;
+				writeCachedDailyVerse(data, today);
+			}
+		} catch (err) {
+			console.warn('No se pudo cargar versículo desde API:', err);
+			if (!dailyVerse) dailyVerse = getLocalDailyVerse(today);
+		} finally {
+			verseLoading = false;
+		}
 	};
 
 	const loadTodaySummary = async (opts?: { silent?: boolean }) => {
@@ -201,11 +237,15 @@
 
 	onMount(() => {
 		loadTodaySummary();
+		loadDailyVerse();
 	});
 
 	afterNavigate(({ from }) => {
 		// Refresco en segundo plano al volver (sin skeleton)
-		if (from) loadTodaySummary({ silent: true });
+		if (from) {
+			loadTodaySummary({ silent: true });
+			loadDailyVerse({ silent: true });
+		}
 	});
 </script>
 
@@ -270,6 +310,38 @@
 	>
 		Ver tareas de hoy
 	</a>
+
+	<!-- Versículo del día -->
+	<section class="mt-8">
+		<div class="flex items-center gap-2 mb-3">
+			<BookOpen class="w-4 h-4 text-brand-accent" />
+			<h3 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">
+				Versículo del día
+			</h3>
+		</div>
+
+		{#if verseLoading && !dailyVerse}
+			<div class="rounded-xl border border-brand-divider bg-brand-surface p-4 space-y-3">
+				<div class="h-4 w-full rounded bg-brand-surface-elevated skeleton"></div>
+				<div class="h-4 w-[85%] rounded bg-brand-surface-elevated skeleton"></div>
+				<div class="h-3 w-28 rounded bg-brand-surface-elevated skeleton"></div>
+			</div>
+		{:else if dailyVerse}
+			<blockquote class="rounded-xl border border-brand-divider bg-brand-surface p-4">
+				<p class="text-[15px] leading-relaxed text-brand-text italic">
+					“{dailyVerse.text}”
+				</p>
+				<footer class="mt-3 flex items-center justify-between gap-2">
+					<cite class="not-italic text-sm font-semibold text-brand-accent">
+						{dailyVerse.reference}
+					</cite>
+					<span class="text-[11px] text-brand-text-muted shrink-0">
+						{dailyVerse.translation}
+					</span>
+				</footer>
+			</blockquote>
+		{/if}
+	</section>
 
 	<!-- F-IN-03: hábitos de hoy -->
 	<section class="mt-8">
