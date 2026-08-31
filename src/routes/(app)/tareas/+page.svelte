@@ -25,6 +25,7 @@
 	import { dndzone } from 'svelte-dnd-action';
 	import logo from '$lib/assets/favicon_logo.png';
 	import TagSelect from '$lib/components/TagSelect.svelte';
+	import Toast from '$lib/components/Toast.svelte';
 	import { linkPomodoroTask } from '$lib/pomodoro.svelte';
 
 	type TaskTag = { id: number; name: string; color: string };
@@ -110,6 +111,7 @@
 	let shareBusyId = $state<string | null>(null);
 	let taskActionError = $state('');
 	let taskActionSuccess = $state('');
+	let showTaskCreatedToast = $state(false);
 
 	const contactLabel = (contact: Contact) =>
 		(contact.nickname || '').trim() || contact.display_name;
@@ -678,6 +680,8 @@
 		if (data?.[0]) {
 			tasks = tasks.map((t) => (t.id === tempId ? { ...data[0], has_lists: false } : t));
 		}
+
+		showTaskCreatedToast = true;
 
 		if (showCalendar) await fetchActiveTaskDays();
 	};
@@ -2415,3 +2419,5 @@
 		</button>
 	</div>
 {/if}
+
+<Toast bind:show={showTaskCreatedToast} message="Tarea agregada correctamente" />
