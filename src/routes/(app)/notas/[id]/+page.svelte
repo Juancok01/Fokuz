@@ -31,7 +31,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let errorMsg = $state('');
-	let previewMode = $state(false);
+	let previewMode = $state(true);
 	let showDeleteConfirm = $state(false);
 
 	let currentUserId = $state('');
@@ -59,6 +59,7 @@
 		if (isNew) {
 			note = { title: '', content: '', parent_id: parentId };
 			subnotes = [];
+			previewMode = false;
 			loading = false;
 			return;
 		}
