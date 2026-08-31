@@ -486,22 +486,45 @@
 		width: 100%;
 		border-collapse: collapse;
 		margin-bottom: 1em;
+		display: block;
+		overflow-x: auto;
 	}
 	:global(.ql-editor table td) {
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		padding: 0.5rem;
+		min-width: 120px;
 	}
-	/* Agrandar checkboxes para mejor usabilidad en móviles */
-	:global(.ql-editor li[data-list="checked"]::before),
-	:global(.ql-editor li[data-list="unchecked"]::before) {
-		font-size: 1.5rem !important;
-		margin-left: -1.2em !important;
-		margin-top: -0.1em !important;
+	/* Agrandar checkboxes para mejor usabilidad en móviles (Diseño Circular Amarillo) */
+	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui::before),
+	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui::before) {
+		content: '' !important;
+		display: inline-block !important;
+		width: 1.5rem !important;
+		height: 1.5rem !important;
+		border-radius: 50% !important;
+		border: 2px solid #facc15 !important;
+		margin-left: -2.25rem !important;
+		margin-top: 0.15rem !important;
+		margin-right: 0.75rem !important;
 		cursor: pointer;
+		vertical-align: top;
 	}
-	:global(.ql-editor li[data-list="checked"]),
-	:global(.ql-editor li[data-list="unchecked"]) {
-		padding-left: 2em !important;
+
+	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui::before) {
+		background-color: transparent !important;
+	}
+
+	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui::before) {
+		background-color: #facc15 !important;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E") !important;
+		background-size: 65% !important;
+		background-position: center !important;
+		background-repeat: no-repeat !important;
+	}
+
+	:global(.ql-snow .ql-editor li[data-list="checked"]),
+	:global(.ql-snow .ql-editor li[data-list="unchecked"]) {
+		padding-left: 2.5rem !important;
 		min-height: 2em;
 	}
 </style>
