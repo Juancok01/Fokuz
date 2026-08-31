@@ -1,4 +1,5 @@
 /** Temporizador Pomodoro compartido (sobrevive al cambiar de pestaña). */
+import { ytPlayer } from './youtubePlayer.svelte';
 
 export const FOCUS_MS = 25 * 60 * 1000;
 export const BREAK_MS = 5 * 60 * 1000;
@@ -68,6 +69,7 @@ const completePhase = () => {
 	endsAt = null;
 	pomodoro.remainingMs = 0;
 	pomodoro.awaitingAck = true;
+	ytPlayer.pause();
 	startAlarm();
 };
 
@@ -94,6 +96,10 @@ export const startPomodoro = () => {
 	pomodoro.running = true;
 	clearTick();
 	tickTimer = setInterval(syncRemaining, 250);
+	
+	if (pomodoro.phase === 'focus') {
+		ytPlayer.play();
+	}
 };
 
 export const pausePomodoro = () => {
@@ -102,6 +108,7 @@ export const pausePomodoro = () => {
 	pomodoro.running = false;
 	endsAt = null;
 	clearTick();
+	ytPlayer.pause();
 };
 
 /** Confirma el fin del ciclo: apaga el pito y prepara la siguiente fase. */
@@ -130,6 +137,7 @@ export const resetPomodoro = () => {
 	pomodoro.awaitingAck = false;
 	endsAt = null;
 	pomodoro.remainingMs = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
+	ytPlayer.pause();
 };
 
 export const setPomodoroPhase = (phase: PomodoroPhase) => {
@@ -141,6 +149,7 @@ export const setPomodoroPhase = (phase: PomodoroPhase) => {
 	endsAt = null;
 	pomodoro.phase = phase;
 	pomodoro.remainingMs = phase === 'focus' ? FOCUS_MS : BREAK_MS;
+	ytPlayer.pause();
 };
 
 export const linkPomodoroTask = (id: number, title: string) => {

@@ -10,7 +10,14 @@
 		Target,
 		X,
 		ListChecks,
-		Check
+		Check,
+		Music,
+		Plus,
+		Trash2,
+		PlayCircle,
+		PauseCircle,
+		SkipForward,
+		Volume2
 	} from 'lucide-svelte';
 	import {
 		BREAK_MS,
@@ -24,6 +31,7 @@
 		setPomodoroPhase,
 		startPomodoro
 	} from '$lib/pomodoro.svelte';
+	import { ytPlayer } from '$lib/youtubePlayer.svelte';
 
 	const progress = $derived.by(() => {
 		const total = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
@@ -43,6 +51,7 @@
 	});
 
 	onMount(() => {
+		ytPlayer.init('youtube-player-container');
 		const taskIdRaw = page.url.searchParams.get('task');
 		const title = page.url.searchParams.get('title');
 		if (taskIdRaw && title) {
@@ -222,6 +231,71 @@
 			>
 				<ListChecks class="w-5 h-5" />
 			</a>
+		</div>
+		
+		<!-- Reproductor y Playlist -->
+		<div class="w-full max-w-sm mt-10 border-t border-brand-divider pt-6">
+			<div class="flex items-center gap-2 mb-4">
+				<Music class="w-4 h-4 text-brand-text-muted" />
+				<h2 class="text-sm font-semibold text-brand-text">Playlist de Enfoque</h2>
+			</div>
+
+			<!-- Input para añadir -->
+			<form class="flex gap-2 mb-4" onsubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const url = fd.get('url'); if (url) { ytPlayer.addTrack(url.toString()); e.currentTarget.reset(); } }}>
+				<input type="url" name="url" placeholder="Pega un enlace de YouTube..." class="flex-1 bg-brand-surface border border-brand-divider rounded-xl px-3 py-2 text-sm text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors" required />
+				<button type="submit" class="p-2 bg-brand-surface border border-brand-divider rounded-xl text-brand-text hover:text-brand-accent hover:border-brand-accent transition-colors" aria-label="Añadir canción">
+					<Plus class="w-5 h-5" />
+				</button>
+			</form>
+
+			<!-- Controles -->
+			{#if ytPlayer.playlist.length > 0}
+				<div class="bg-brand-surface border border-brand-divider rounded-xl p-3 mb-4 flex items-center justify-between gap-2">
+					<button type="button" class="p-1.5 text-brand-text hover:text-brand-accent transition-colors" onclick={() => ytPlayer.togglePlay()} disabled={!ytPlayer.isReady}>
+						{#if ytPlayer.isPlaying}
+							<PauseCircle class="w-6 h-6" />
+						{:else}
+							<PlayCircle class="w-6 h-6" />
+						{/if}
+					</button>
+					
+					<button type="button" class="p-1.5 text-brand-text hover:text-brand-accent transition-colors" onclick={() => ytPlayer.next()} disabled={!ytPlayer.isReady}>
+						<SkipForward class="w-5 h-5" />
+					</button>
+					
+					<div class="flex-1 flex items-center gap-2 px-2">
+						<Volume2 class="w-4 h-4 text-brand-text-muted" />
+						<input type="range" min="0" max="100" value={ytPlayer.volume} oninput={(e) => ytPlayer.setVolume(Number(e.currentTarget.value))} class="w-full accent-brand-accent h-1.5 bg-brand-divider rounded-lg appearance-none cursor-pointer" />
+					</div>
+				</div>
+
+				<!-- Lista -->
+				<ul class="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+					{#each ytPlayer.playlist as track, i}
+						<li class="flex items-center gap-2 group p-2 rounded-lg hover:bg-brand-surface transition-colors {i === ytPlayer.currentTrackIndex ? 'bg-brand-surface border border-brand-accent/30' : ''}">
+							{#if ytPlayer.isPlaying && i === ytPlayer.currentTrackIndex}
+								<div class="flex gap-0.5 items-end h-3 w-3">
+									<div class="w-0.5 bg-brand-accent h-full animate-bounce [animation-delay:-0.3s]"></div>
+									<div class="w-0.5 bg-brand-accent h-2/3 animate-bounce [animation-delay:-0.15s]"></div>
+									<div class="w-0.5 bg-brand-accent h-full animate-bounce"></div>
+								</div>
+							{/if}
+							<button type="button" class="flex-1 text-left min-w-0 text-sm truncate {i === ytPlayer.currentTrackIndex ? 'text-brand-accent font-medium' : 'text-brand-text'}" onclick={() => ytPlayer.playTrack(i)}>
+								{track.title}
+							</button>
+							<button type="button" class="p-1.5 text-brand-text-muted md:opacity-0 md:group-hover:opacity-100 hover:text-red-400 transition-all" onclick={() => ytPlayer.removeTrack(i)} aria-label="Eliminar">
+								<Trash2 class="w-4 h-4" />
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="text-xs text-brand-text-muted text-center py-6 bg-brand-surface rounded-xl border border-brand-divider border-dashed">
+					Agrega canciones de YouTube para crear tu lista.
+				</p>
+			{/if}
+			
+			<div id="youtube-player-container" class="hidden"></div>
 		</div>
 	</div>
 
