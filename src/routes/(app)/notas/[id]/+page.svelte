@@ -512,8 +512,9 @@
 		touch-action: manipulation;
 	}
 	
-	/* Esconder el ::before original para que no estorbe */
-	:global(.ql-snow .ql-editor li > .ql-ui::before) {
+	/* Esconder el ::before original para que no estorbe solo en checkboxes */
+	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui::before),
+	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui::before) {
 		display: none !important;
 	}
 
