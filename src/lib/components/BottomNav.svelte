@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Home, RefreshCw, ListChecks, User, Timer } from 'lucide-svelte';
+	import { Home, RefreshCw, ListChecks, User, Timer, StickyNote } from 'lucide-svelte';
 	import { pomodoro } from '$lib/pomodoro.svelte';
 
 	const tabs = [
@@ -24,6 +24,12 @@
 			match: (path: string) => path.startsWith('/pomodoro'),
 			live: () => pomodoro.running || pomodoro.awaitingAck
 		},
+		{
+			href: '/notas',
+			label: 'Notas',
+			icon: StickyNote,
+			match: (path: string) => path.startsWith('/notas')
+		},
 		{ href: '/perfil', label: 'Perfil', icon: User, match: (path: string) => path.startsWith('/perfil') }
 	];
 </script>
@@ -32,7 +38,7 @@
 	class="absolute bottom-0 left-0 right-0 z-20 border-t border-brand-divider bg-brand-bg pb-[env(safe-area-inset-bottom)]"
 	aria-label="Navegación principal"
 >
-	<div class="grid grid-cols-5 h-16">
+	<div class="grid grid-cols-6 h-16">
 		{#each tabs as tab}
 			{@const active = tab.match(page.url.pathname)}
 			{@const Icon = tab.icon}
