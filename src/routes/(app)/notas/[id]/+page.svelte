@@ -3,8 +3,8 @@
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { ChevronLeft, Plus, Save, Trash2, StickyNote, ChevronRight, Share2, X } from 'lucide-svelte';
-	import { marked } from 'marked';
-	import DOMPurify from 'dompurify';
+	import 'quill/dist/quill.snow.css';
+	import 'highlight.js/styles/atom-one-dark.css';
 	import {
 		fetchNote,
 		fetchSubnotes,
@@ -31,7 +31,6 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let errorMsg = $state('');
-	let previewMode = $state(true);
 	let showDeleteConfirm = $state(false);
 
 	let currentUserId = $state('');
@@ -42,15 +41,12 @@
 	let shareBusyId = $state<string | null>(null);
 	let showNoteSavedToast = $state(false);
 
-	const parsedContent = $derived.by(() => {
-		if (!previewMode || !note.content) return '';
-		try {
-			const html = marked.parse(note.content, { async: false }) as string;
-			return DOMPurify.sanitize(html);
-		} catch (e) {
-			return '<p class="text-red-400">Error al procesar formato</p>';
-		}
-	});
+	let quillInstance: any = null;
+	let showTableModal = $state(false);
+	let tableRows = $state(3);
+	let tableCols = $state(3);
+
+
 
 	const loadData = async () => {
 		const { data: { user } } = await supabase.auth.getUser();
@@ -59,7 +55,6 @@
 		if (isNew) {
 			note = { title: '', content: '', parent_id: parentId };
 			subnotes = [];
-			previewMode = false;
 			loading = false;
 			return;
 		}
@@ -164,6 +159,61 @@
 			goto('/notas');
 		}
 	};
+
+	function quillAction(node: HTMLElement) {
+		let quill: any;
+
+		(async () => {
+			const Quill = (await import('quill')).default;
+			const hljs = (await import('highlight.js')).default;
+
+			const icons = Quill.import('ui/icons');
+			icons['table'] = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>';
+			icons['table-delete'] = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" opacity="0.3"/><path d="M8 8l8 8M16 8l-8 8"/></svg>';
+
+			quill = new Quill(node, {
+				theme: 'snow',
+				modules: {
+					syntax: { hljs },
+					table: true,
+					toolbar: {
+						container: [
+							[{ 'header': [1, 2, 3, false] }],
+							['bold', 'italic', 'underline', 'strike'],
+							[{ 'list': 'ordered'}, { 'list': 'bullet' }, { 'list': 'check' }],
+							['code-block', 'table', 'table-delete'],
+							['clean']
+						],
+						handlers: {
+							table: function() {
+								showTableModal = true;
+							},
+							'table-delete': function() {
+								this.quill.getModule('table').deleteTable();
+							}
+						}
+					}
+				},
+				placeholder: 'Escribe tu nota aquí...'
+			});
+
+			quillInstance = quill;
+
+			if (note.content) {
+				quill.root.innerHTML = note.content;
+			}
+
+			quill.on('text-change', () => {
+				note.content = quill.root.innerHTML;
+			});
+		})();
+
+		return {
+			destroy() {
+				quillInstance = null;
+			}
+		};
+	}
 </script>
 
 <svelte:head>
@@ -237,37 +287,14 @@
 				type="text"
 				bind:value={note.title}
 				placeholder="Título de la nota..."
+				lang="es"
+				spellcheck="true"
 				class="w-full bg-transparent text-2xl font-bold text-brand-text placeholder-brand-text-muted focus:outline-none"
 			/>
 			
-			<div class="flex items-center gap-2 mb-2 bg-brand-surface p-1 rounded-lg w-fit mt-2">
-				<button
-					type="button"
-					class="px-3 py-1.5 rounded-md text-xs font-bold transition-colors {!previewMode ? 'bg-brand-bg text-brand-text shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}"
-					onclick={() => previewMode = false}
-				>
-					Escribir
-				</button>
-				<button
-					type="button"
-					class="px-3 py-1.5 rounded-md text-xs font-bold transition-colors {previewMode ? 'bg-brand-bg text-brand-text shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}"
-					onclick={() => previewMode = true}
-				>
-					Vista Previa
-				</button>
+			<div class="w-full flex-1 min-h-[200px] mt-2 relative quill-wrapper">
+				<div use:quillAction class="w-full h-full text-brand-text max-w-none" lang="es" spellcheck="true"></div>
 			</div>
-			
-			{#if previewMode}
-				<div class="w-full flex-1 min-h-[200px] prose prose-invert prose-brand overflow-y-auto">
-					{@html parsedContent}
-				</div>
-			{:else}
-				<textarea
-					bind:value={note.content}
-					placeholder="Escribe tu nota usando Markdown (ej: **negrita**, tablas, etc)..."
-					class="w-full flex-1 min-h-[200px] bg-transparent resize-none text-brand-text placeholder-brand-text-muted/60 focus:outline-none leading-relaxed font-mono text-sm"
-				></textarea>
-			{/if}
 			
 			{#if !isNew}
 				<div class="pt-6 border-t border-brand-divider mt-auto">
@@ -367,3 +394,101 @@
 {/if}
 
 <Toast bind:show={showNoteSavedToast} message="Nota guardada correctamente" />
+
+{#if showTableModal}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm" onclick={() => showTableModal = false}>
+		<div class="bg-brand-surface border border-brand-divider rounded-2xl p-6 w-full max-w-sm shadow-2xl relative animate-in fade-in zoom-in-95 duration-200" onclick={e => e.stopPropagation()}>
+			<h3 class="text-xl font-bold text-brand-text mb-4">Insertar Tabla</h3>
+			
+			<div class="space-y-4 mb-6">
+				<div>
+					<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Filas</label>
+					<input type="number" min="1" max="20" bind:value={tableRows} class="w-full bg-brand-bg border border-brand-divider rounded-xl px-4 py-2.5 text-brand-text focus:outline-none focus:border-brand-accent transition-colors" />
+				</div>
+				<div>
+					<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Columnas</label>
+					<input type="number" min="1" max="20" bind:value={tableCols} class="w-full bg-brand-bg border border-brand-divider rounded-xl px-4 py-2.5 text-brand-text focus:outline-none focus:border-brand-accent transition-colors" />
+				</div>
+			</div>
+			
+			<div class="flex items-center justify-end gap-2">
+				<button type="button" class="px-4 py-2 rounded-xl text-sm font-bold text-brand-text-muted hover:bg-brand-bg transition-colors" onclick={() => showTableModal = false}>Cancelar</button>
+				<button type="button" class="px-4 py-2 bg-brand-accent text-brand-bg rounded-xl text-sm font-bold hover:brightness-105 transition-colors" onclick={() => {
+					if (quillInstance) {
+						quillInstance.getModule('table').insertTable(tableRows, tableCols);
+					}
+					showTableModal = false;
+				}}>Insertar</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<style>
+	/* Quill Dark Theme Overrides */
+	:global(.ql-toolbar.ql-snow) {
+		border-color: rgba(255, 255, 255, 0.1) !important;
+		background: rgba(255, 255, 255, 0.05);
+		border-top-left-radius: 0.5rem;
+		border-top-right-radius: 0.5rem;
+		font-family: inherit !important;
+	}
+	:global(.ql-container.ql-snow) {
+		border-color: rgba(255, 255, 255, 0.1) !important;
+		border-bottom-left-radius: 0.5rem;
+		border-bottom-right-radius: 0.5rem;
+		font-family: inherit !important;
+		font-size: 1rem !important;
+	}
+	:global(.ql-editor) {
+		min-height: 200px;
+	}
+	:global(.ql-snow .ql-stroke) {
+		stroke: #a1a1aa !important;
+	}
+	:global(.ql-snow .ql-fill, .ql-snow .ql-stroke.ql-fill) {
+		fill: #a1a1aa !important;
+	}
+	:global(.ql-snow .ql-picker) {
+		color: #a1a1aa !important;
+	}
+	:global(.ql-snow .ql-picker-options) {
+		background-color: #18181b !important;
+		border-color: rgba(255, 255, 255, 0.1) !important;
+	}
+	:global(.ql-snow .ql-picker-item:hover) {
+		color: #e4e4e7 !important;
+	}
+	:global(.ql-editor.ql-blank::before) {
+		color: rgba(255, 255, 255, 0.4) !important;
+		font-style: normal !important;
+	}
+	:global(.ql-editor h1), :global(.ql-editor h2), :global(.ql-editor h3) {
+		font-weight: 700 !important;
+		margin-top: 1em;
+		margin-bottom: 0.5em;
+	}
+	:global(.ql-editor h1) { font-size: 1.875rem; }
+	:global(.ql-editor h2) { font-size: 1.5rem; }
+	:global(.ql-editor h3) { font-size: 1.25rem; }
+	:global(.ql-editor p) { margin-bottom: 1em; }
+	:global(.ql-editor ul), :global(.ql-editor ol) { padding-left: 1.5rem; margin-bottom: 1em; }
+	:global(.ql-editor pre.ql-syntax) {
+		background-color: #18181b;
+		color: #e4e4e7;
+		padding: 1rem;
+		border-radius: 0.5rem;
+		overflow-x: auto;
+	}
+	:global(.ql-editor table) {
+		width: 100%;
+		border-collapse: collapse;
+		margin-bottom: 1em;
+	}
+	:global(.ql-editor table td) {
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		padding: 0.5rem;
+	}
+</style>
