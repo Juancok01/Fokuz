@@ -94,11 +94,6 @@
 						</div>
 						<ChevronRight class="w-4 h-4 text-brand-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
 					</div>
-					{#if note.content}
-						<p class="text-sm text-brand-text-muted line-clamp-2 leading-relaxed">
-							{note.content}
-						</p>
-					{/if}
 					<span class="text-[10px] text-brand-text-muted mt-1 uppercase tracking-wider font-semibold">
 						{new Date(note.updated_at).toLocaleDateString()}
 					</span>
