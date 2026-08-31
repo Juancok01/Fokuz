@@ -495,6 +495,13 @@
 		min-width: 120px;
 	}
 	/* Agrandar checkboxes para mejor usabilidad en móviles (Diseño Circular Amarillo) */
+	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui),
+	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui) {
+		user-select: none;
+		-webkit-user-select: none;
+		touch-action: manipulation;
+	}
+	
 	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui::before),
 	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui::before) {
 		content: '' !important;
