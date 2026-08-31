@@ -491,4 +491,17 @@
 		border: 1px solid rgba(255, 255, 255, 0.2);
 		padding: 0.5rem;
 	}
+	/* Agrandar checkboxes para mejor usabilidad en móviles */
+	:global(.ql-editor li[data-list="checked"]::before),
+	:global(.ql-editor li[data-list="unchecked"]::before) {
+		font-size: 1.5rem !important;
+		margin-left: -1.2em !important;
+		margin-top: -0.1em !important;
+		cursor: pointer;
+	}
+	:global(.ql-editor li[data-list="checked"]),
+	:global(.ql-editor li[data-list="unchecked"]) {
+		padding-left: 2em !important;
+		min-height: 2em;
+	}
 </style>
