@@ -497,14 +497,6 @@
 	/* Agrandar checkboxes para mejor usabilidad en móviles (Diseño Circular Amarillo) */
 	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui),
 	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui) {
-		user-select: none;
-		-webkit-user-select: none;
-		touch-action: manipulation;
-	}
-	
-	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui::before),
-	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui::before) {
-		content: '' !important;
 		display: inline-block !important;
 		width: 1.5rem !important;
 		height: 1.5rem !important;
@@ -515,13 +507,21 @@
 		margin-right: 0.75rem !important;
 		cursor: pointer;
 		vertical-align: top;
+		user-select: none;
+		-webkit-user-select: none;
+		touch-action: manipulation;
+	}
+	
+	/* Esconder el ::before original para que no estorbe */
+	:global(.ql-snow .ql-editor li > .ql-ui::before) {
+		display: none !important;
 	}
 
-	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui::before) {
+	:global(.ql-snow .ql-editor li[data-list="unchecked"] > .ql-ui) {
 		background-color: transparent !important;
 	}
 
-	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui::before) {
+	:global(.ql-snow .ql-editor li[data-list="checked"] > .ql-ui) {
 		background-color: #facc15 !important;
 		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E") !important;
 		background-size: 65% !important;
