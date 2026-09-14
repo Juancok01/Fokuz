@@ -1,29 +1,14 @@
 <script lang="ts">
 	import {
-		Calendar,
-		GripVertical,
-		CheckCircle2,
-		Circle,
-		Plus,
-		X,
-		AlertTriangle,
-		Trash2,
-		Tag,
-		StickyNote,
-		Share2,
-		ListChecks,
-		List,
-		MoreVertical,
-		ArrowLeft,
-		Settings,
-		Filter,
-		Timer
-	} from 'lucide-svelte';
+	Calendar, GripVertical, CheckCircle2, Circle, Plus, X, AlertTriangle, Trash2,
+	Tag, StickyNote, Share2, ListChecks, List, MoreVertical, ArrowLeft, Settings,
+	Filter, Timer, CheckSquare, Paperclip, MessageSquare, Flame, ChevronDown, Kanban, LayoutList
+} from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { dndzone } from 'svelte-dnd-action';
-	import logo from '$lib/assets/favicon_logo.png';
+	import logo from '$lib/assets/Logo_Fokuz.png';
 	import TagSelect from '$lib/components/TagSelect.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import { linkPomodoroTask } from '$lib/pomodoro.svelte';
@@ -1329,1095 +1314,271 @@
 		showTaskUpdate = false;
 		goto('/pomodoro');
 	};
+
+
+	// --- KANBAN MOCK LOGIC ---
+	const COLUMNS = [
+		{ id: 'backlog', title: 'Por Hacer / Backlog', color: 'bg-brand-surface' },
+		{ id: 'progress', title: 'En Progreso', color: 'bg-brand-surface' },
+		{ id: 'review', title: 'En Revisión / Pausa', color: 'bg-brand-surface' },
+		{ id: 'completed', title: 'Completado', color: 'bg-brand-surface' }
+	];
+
+	let kanbanState = $derived.by(() => {
+		const cols = { backlog: [], progress: [], review: [], completed: [] };
+		tasks.forEach(t => {
+			if (t.is_completed) cols.completed.push(t);
+			else {
+				const mod = Math.abs(t.id) % 3;
+				if (mod === 0) cols.backlog.push(t);
+				else if (mod === 1) cols.progress.push(t);
+				else cols.review.push(t);
+			}
+		});
+		Object.keys(cols).forEach(k => cols[k].sort((a,b) => a.order_index - b.order_index));
+		return cols;
+	});
+	
+	let boardItems = $state({ backlog: [], progress: [], review: [], completed: [] });
+	
+	$effect(() => {
+		boardItems = kanbanState;
+	});
+
+	function handleDndConsiderCards(e, colId) {
+		boardItems[colId] = e.detail.items;
+	}
+	function handleDndFinalizeCards(e, colId) {
+		boardItems[colId] = e.detail.items;
+		// Normally we would update supabase here based on the new column and order
+	}
+	// -------------------------
 </script>
 
 <svelte:head>
-	<title>Tareas · Fokuz</title>
+	<title>Tablero Tareas · Fokuz</title>
 </svelte:head>
 
-<!-- Header -->
-<header class="flex items-center justify-between p-6 bg-brand-surface pb-4 rounded-b-3xl z-10 sticky top-0 border-b border-brand-divider">
-	<div class="flex items-center gap-3">
-		<img src={logo} alt="Fokuz" class="w-8 h-8 rounded-lg object-contain" />
-		<h1 class="text-xl font-bold text-brand-text">Tareas</h1>
-	</div>
-	<div class="flex items-center gap-1">
-		<button
-			onclick={() => (showFilter = true)}
-			class="relative p-2 rounded-xl text-brand-accent hover:bg-brand-accent-muted transition-colors"
-			title="Filtrar"
-			aria-label="Filtrar tareas"
-		>
-			<Filter class="w-5 h-5" />
-			{#if hasActiveFilters}
-				<span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-accent"></span>
-			{/if}
-		</button>
-		<button
-			onclick={() => (showTags = true)}
-			class="p-2 rounded-xl text-brand-accent hover:bg-brand-accent-muted transition-colors"
-			title="Etiquetas"
-			aria-label="Gestionar etiquetas"
-		>
-			<Tag class="w-5 h-5" />
-		</button>
-	</div>
-</header>
-
-<!-- Contenido principal -->
-<div class="flex-1 overflow-y-auto px-6 py-4 pb-28">
-	
-	<!-- Selector de fecha -->
-	<div class="flex items-center gap-1 bg-brand-surface rounded-2xl p-1 mb-8 border border-brand-divider">
-		<div class="flex flex-1 items-center gap-1 text-sm font-medium min-w-0">
-			<button class={dayTabClass(isOffsetDay(selectedDate, -1))} onclick={() => setDate(-1)}>Ayer</button>
-			<button class={dayTabClass(isToday(selectedDate))} onclick={() => setDate(0)}>Hoy</button>
-			<button class={dayTabClass(isOffsetDay(selectedDate, 1))} onclick={() => setDate(1)}>Mañana</button>
-		</div>
-		<div class="w-px h-6 bg-brand-divider shrink-0"></div>
-		
-		<!-- Selector Custom (Botón para abrir modal) -->
-		<button 
-			class="relative w-9 h-9 flex items-center justify-center text-brand-accent hover:bg-brand-accent-muted rounded-full transition-colors"
-			onclick={() => {
-				calendarMode = 'navigate';
-				showCalendar = true;
-			}}
-		>
-			<Calendar class="w-5 h-5" />
-		</button>
-	</div>
-
-	<!-- Lista de prioridades -->
-	<div class="mb-2">
-		<div class="flex items-center justify-between gap-2 mb-4">
-			<h2 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Enfoque actual</h2>
-			<div class="flex items-center gap-2">
-				{#if tasksRefreshing}
-					<span class="text-[11px] text-brand-text-muted">Actualizando…</span>
-				{/if}
-				{#if hasActiveFilters}
-					<button
-						type="button"
-						class="text-[11px] font-semibold text-brand-accent hover:underline"
-						onclick={clearFilters}
-					>
-						Quitar filtros
-					</button>
-				{/if}
+<div class="flex-1 flex flex-col h-full bg-[#070b0e] overflow-hidden">
+	<!-- Top Toolbar -->
+	<header class="shrink-0 border-b border-brand-divider bg-brand-surface px-6 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+		<div class="flex items-center gap-6">
+			<button class="flex items-center gap-2 text-brand-text hover:text-brand-accent transition-colors font-bold text-sm bg-[#0d1216] border border-brand-divider px-3 py-1.5 rounded-lg">
+				<span class="w-2 h-2 rounded-full bg-brand-accent"></span>
+				Tablero: Enfoque Semanal & Proyectos
+				<ChevronDown class="w-4 h-4 text-brand-text-muted" />
+			</button>
+			
+			<div class="flex items-center gap-1 border border-brand-divider bg-[#0d1216] p-1 rounded-lg">
+				<button class="flex items-center gap-2 px-3 py-1 rounded-md bg-brand-surface-elevated border border-brand-divider text-brand-accent text-xs font-bold shadow-sm">
+					<Kanban class="w-3.5 h-3.5" /> Kanban
+				</button>
+				<button class="flex items-center gap-2 px-3 py-1 rounded-md text-brand-text-muted hover:text-brand-text text-xs font-semibold transition-colors">
+					<LayoutList class="w-3.5 h-3.5" /> Lista
+				</button>
+				<button class="flex items-center gap-2 px-3 py-1 rounded-md text-brand-text-muted hover:text-brand-text text-xs font-semibold transition-colors">
+					<Calendar class="w-3.5 h-3.5" /> Calendario
+				</button>
 			</div>
 		</div>
 
-		{#if tasksLoading && tasks.length === 0}
-			<div class="flex flex-col gap-3">
-				{#each [1, 2, 3] as _}
-					<div class="h-[68px] rounded-2xl bg-brand-surface skeleton"></div>
-				{/each}
-			</div>
-		{:else}
-		<section 
-			class="flex flex-col gap-3 min-h-[50px]" 
-			use:dndzone={{
-				items: filteredTasks,
-				flipDurationMs: 180,
-				dropTargetStyle: {},
-				dragDisabled: hasActiveFilters || tasksRefreshing
-			}} 
-			onconsider={handleDndConsider} 
-			onfinalize={handleDndFinalize}
-		>
-			{#each filteredTasks as task (task.id)}
-				{@const taskTag = getTaskTag(task)}
-				<!-- svelte-ignore a11y_click_events_have_key_events -->
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div 
-					class="flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-colors duration-200 border-l-4 {selectedTaskId === task.id ? 'bg-brand-surface-elevated border-brand-accent shadow-md' : 'bg-brand-surface border-transparent hover:bg-brand-surface-elevated'}"
-					onclick={() => openTaskUpdate(task)}
-				>
-					<div class="flex items-center gap-4 flex-1 min-w-0">
-						<!-- svelte-ignore a11y_consider_explicit_label -->
-						<button 
-							onclick={(e) => { e.stopPropagation(); toggleTask(task.id); }}
-							class="text-brand-text-muted hover:text-brand-accent transition-colors focus:outline-none shrink-0"
-						>
-							{#if task.is_completed}
-								<CheckCircle2 class="w-6 h-6 text-brand-accent fill-brand-accent-muted" />
-							{:else}
-								<Circle class="w-6 h-6" />
-							{/if}
+		<div class="flex flex-wrap items-center gap-3">
+			<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-brand-text-muted hover:text-brand-text border border-transparent hover:border-brand-divider text-xs font-semibold transition-colors" onclick={() => showTags = true}>
+				<Tag class="w-3.5 h-3.5" /> Etiquetas
+			</button>
+			<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-brand-text hover:text-brand-accent border border-transparent hover:border-brand-divider text-xs font-semibold transition-colors">
+				<span class="w-2 h-2 rounded-full bg-brand-accent"></span> Solo mías
+			</button>
+			<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-brand-accent bg-brand-accent/10 border border-brand-accent/20 text-xs font-bold transition-colors">
+				<Zap class="w-3.5 h-3.5" /> Sprint 37 (13 - 19 Sept)
+			</button>
+			<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-brand-text-muted hover:text-brand-text border border-brand-divider text-xs font-semibold transition-colors bg-[#0d1216]">
+				<Settings class="w-3.5 h-3.5" /> Reglas
+			</button>
+			<button class="flex items-center gap-2 px-4 py-1.5 rounded-lg text-brand-bg bg-brand-accent hover:brightness-105 shadow-[0_0_10px_var(--color-brand-accent-muted)] text-xs font-bold transition-all" onclick={openNewTask}>
+				<Plus class="w-4 h-4" /> Añadir Tarjeta
+			</button>
+		</div>
+	</header>
+
+	<!-- Kanban Board -->
+	<div class="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar p-6 bg-[#070b0e]">
+		<div class="flex items-start gap-6 h-full min-w-max pb-4">
+			{#each COLUMNS as col}
+				<div class="flex flex-col w-80 h-full max-h-full rounded-2xl bg-[#0d1216] border border-brand-divider overflow-hidden shadow-lg">
+					<!-- Column Header -->
+					<div class="flex items-center justify-between p-4 border-b border-brand-divider/50 bg-[#0d1216]">
+						<div class="flex items-center gap-2">
+							<span class="w-2 h-2 rounded-full {col.id === 'completed' ? 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]' : (col.id === 'progress' ? 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]' : (col.id === 'review' ? 'bg-amber-400 shadow-[0_0_8px_var(--color-amber-400)]' : 'bg-brand-text-muted'))}"></span>
+							<h3 class="text-sm font-bold text-brand-text">{col.title}</h3>
+							<span class="text-[10px] font-bold text-brand-text-muted bg-brand-surface border border-brand-divider px-2 py-0.5 rounded-full">
+								{boardItems[col.id]?.length || 0}
+							</span>
+						</div>
+						<button class="text-brand-text-muted hover:text-brand-text transition-colors p-1 rounded-md hover:bg-brand-surface-elevated">
+							<MoreVertical class="w-4 h-4" />
 						</button>
-						<div class="min-w-0">
-							<span class="block text-[15px] font-medium truncate {task.is_completed ? 'text-brand-text-muted line-through' : 'text-brand-text'}">
-								{task.title}
-							</span>
-							{#if taskTag}
-								<span
-									class="inline-flex mt-1 px-2 py-0.5 rounded-md text-[11px] font-semibold text-brand-bg"
-									style="background-color: {taskTag.color}"
-								>
-									{taskTag.name}
-								</span>
-							{/if}
-							{#if task.is_shared}
-								<p class="mt-1 text-[11px] font-medium text-brand-accent truncate">
-									{sharedWithText(task)}
-								</p>
-							{/if}
-						</div>
 					</div>
-					
-					<div class="flex items-center gap-2 shrink-0">
-						{#if task.has_lists}
-							<span title="Tiene lista" class="text-brand-accent">
-								<ListChecks class="w-4 h-4" />
-							</span>
-						{/if}
-						{#if task.is_shared}
-							<span title={sharedWithText(task)} class="text-brand-accent">
-								<Share2 class="w-4 h-4" />
-							</span>
-						{/if}
-						{#if task.novedad && task.novedad.trim() !== ''}
-							<AlertTriangle class="w-5 h-5 text-brand-accent fill-brand-accent-muted" />
-						{/if}
-						<div class="text-brand-text-muted/50 hover:text-brand-text-muted cursor-grab active:cursor-grabbing p-1">
-							<GripVertical class="w-5 h-5" />
-						</div>
+
+					<!-- Column Body (Draggable Area) -->
+					<div 
+						class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 bg-brand-surface/30"
+						use:dndzone={{items: boardItems[col.id] || [], flipDurationMs: 200, dropTargetStyle: {}}}
+						on:consider={(e) => handleDndConsiderCards(e, col.id)}
+						on:finalize={(e) => handleDndFinalizeCards(e, col.id)}
+					>
+						{#each (boardItems[col.id] || []) as task (task.id)}
+							<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-4 shadow-sm hover:border-brand-accent/50 transition-colors group cursor-grab active:cursor-grabbing relative overflow-hidden">
+								
+								<!-- Mock Tag & Priority -->
+								<div class="flex items-center justify-between mb-3">
+									{#if task.tags}
+										<span class="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase" style="background: {task.tags.color}15; color: {task.tags.color}; border: 1px solid {task.tags.color}30">
+											{task.tags.name}
+										</span>
+									{:else}
+										<span class="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase bg-brand-surface-elevated text-brand-text-muted border border-brand-divider">
+											General
+										</span>
+									{/if}
+									
+									<!-- Mock Priority or Deadlines based on ID parity -->
+									{#if task.id % 4 === 0}
+										<span class="flex items-center gap-1 text-[9px] font-bold text-red-400"><ListChecks class="w-3 h-3" /> Alta</span>
+									{:else if task.id % 4 === 1}
+										<span class="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/20">Activa hoy</span>
+									{:else if task.id % 4 === 2}
+										<span class="flex items-center gap-1 text-[9px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded-md"><Timer class="w-3 h-3" /> Hoy 18:00</span>
+									{/if}
+								</div>
+
+								<!-- Title -->
+								<h4 class="text-[13px] font-bold text-brand-text leading-snug mb-2 group-hover:text-brand-accent transition-colors">{task.title}</h4>
+								
+								<!-- Novedad (Description) -->
+								{#if task.novedad}
+									<p class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-3 mb-3 border-l-2 border-brand-divider pl-2">
+										{task.novedad}
+									</p>
+								{:else if task.id % 2 !== 0}
+									<p class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-2 mb-3">
+										Subtareas generadas a partir de la revisión de ayer. Pendiente aprobar recursos.
+									</p>
+								{/if}
+
+								<!-- Mock Progress Bar for subtasks -->
+								{#if task.id % 3 === 0}
+									<div class="mb-3">
+										<div class="flex items-center justify-between text-[9px] font-bold text-brand-text-muted mb-1">
+											<span>Progreso</span>
+											<span class="text-brand-accent">60%</span>
+										</div>
+										<div class="h-1.5 bg-brand-surface rounded-full overflow-hidden border border-brand-divider">
+											<div class="h-full bg-brand-accent w-[60%] rounded-full shadow-[0_0_5px_var(--color-brand-accent)]"></div>
+										</div>
+									</div>
+								{:else if task.id % 2 === 0}
+									<div class="flex items-center justify-between mb-3 text-[10px] font-semibold text-brand-text-muted">
+										<div class="flex items-center gap-1">
+											<CheckSquare class="w-3.5 h-3.5 text-brand-accent/80" />
+										</div>
+										<span class="text-brand-text">3/4</span>
+									</div>
+									<div class="h-1 bg-brand-surface mb-3 rounded-full overflow-hidden">
+										<div class="h-full bg-brand-accent w-3/4 rounded-full"></div>
+									</div>
+								{/if}
+
+								<!-- Footer Icons & Avatars -->
+								<div class="flex items-center justify-between pt-1">
+									<div class="flex items-center gap-3 text-[10px] font-medium text-brand-text-muted">
+										{#if task.id % 2 === 0}
+											<span class="flex items-center gap-1 hover:text-brand-text transition-colors"><Paperclip class="w-3 h-3" /> 2</span>
+											<span class="flex items-center gap-1 hover:text-brand-text transition-colors"><MessageSquare class="w-3 h-3" /> 1</span>
+										{:else if task.id % 3 === 0}
+											<span class="flex items-center gap-1 text-orange-400"><Flame class="w-3 h-3" /> Racha: 12d</span>
+										{:else}
+											<span class="flex items-center gap-1"><Timer class="w-3 h-3" /> 15 min</span>
+										{/if}
+									</div>
+									<div class="w-6 h-6 rounded-full bg-brand-accent/20 border border-brand-accent/50 flex items-center justify-center text-[9px] font-bold text-brand-accent">
+										JN
+									</div>
+								</div>
+
+							</div>
+						{/each}
+						
+						<!-- Add Card Button inside column -->
+						<button class="w-full py-3 mt-2 flex items-center justify-center gap-2 text-[11px] font-bold text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated border border-transparent hover:border-brand-divider rounded-xl transition-all" onclick={openNewTask}>
+							<Plus class="w-4 h-4" /> Añadir tarjeta
+						</button>
 					</div>
 				</div>
 			{/each}
-		</section>
-		{#if filteredTasks.length === 0}
-			<div class="text-center py-8 text-brand-text-muted text-sm">
-				{#if hasActiveFilters}
-					No hay tareas con esos filtros.
-				{:else}
-					No hay prioridades para este día.
-				{/if}
-			</div>
-		{/if}
-		{/if}
+		</div>
 	</div>
 
-	<!-- Barra de progreso -->
-	<div class="mt-8 mb-6">
-		<div class="flex justify-between items-center mb-2">
-			<span class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Progreso diario</span>
-			<span class="text-sm font-bold text-brand-accent">{progress}%</span>
+	<!-- Bottom Status Bar -->
+	<footer class="shrink-0 h-10 border-t border-brand-divider bg-[#070b0e] px-6 flex items-center justify-between text-[11px] font-medium relative z-10">
+		<div class="flex items-center gap-6">
+			<span class="flex items-center gap-2 text-brand-text font-bold"><Kanban class="w-3.5 h-3.5 text-brand-text-muted" /> {tasks.length} tareas en este tablero</span>
+			<span class="flex items-center gap-2 text-brand-accent font-bold"><span class="w-1.5 h-1.5 rounded-full bg-brand-accent shadow-[0_0_5px_var(--color-brand-accent)]"></span> {boardItems.completed.length} completadas ({tasks.length ? Math.round((boardItems.completed.length / tasks.length)*100) : 0}%)</span>
+			<span class="flex items-center gap-1 text-orange-400 font-bold"><span class="w-1 h-1 rounded-full bg-orange-400"></span> Próxima entrega: Hoy 18:00</span>
 		</div>
-		<div class="h-2 w-full bg-brand-surface-elevated rounded-full overflow-hidden">
-			<div 
-				class="h-full bg-brand-accent rounded-full transition-all duration-500 ease-out" 
-				style="width: {progress}%"
-			></div>
+		<div class="flex items-center gap-4">
+			<div class="flex -space-x-1.5">
+				<div class="w-5 h-5 rounded-full bg-brand-accent/20 border border-[#070b0e] flex items-center justify-center text-[8px] font-bold text-brand-accent z-30 shadow-sm">JN</div>
+				<div class="w-5 h-5 rounded-full bg-pink-500/20 border border-[#070b0e] flex items-center justify-center text-[8px] font-bold text-pink-500 z-20 shadow-sm">AL</div>
+				<div class="w-5 h-5 rounded-full bg-purple-500/20 border border-[#070b0e] flex items-center justify-center text-[8px] font-bold text-purple-500 z-10 shadow-sm">MC</div>
+			</div>
+			<div class="flex items-center gap-1.5 text-brand-text-muted font-bold">
+				<span class="w-2 h-2 rounded-full bg-brand-accent shadow-[0_0_5px_var(--color-brand-accent)]"></span> Tablero sincronizado
+			</div>
 		</div>
-	</div>
+	</footer>
 </div>
 
-<!-- Floating Action Button -->
-<button 
-	class="absolute bottom-24 right-6 w-14 h-14 bg-brand-accent hover:brightness-105 text-brand-bg rounded-full shadow-lg shadow-black/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-20"
-	onclick={openNewTask}
->
-	<Plus class="w-7 h-7" />
-</button>
-
-<!-- Modals (Bottom Sheets) -->
-
-<!-- Overlay -->
-{#if showNewTask || showTaskUpdate || showCalendar || showTags || showFilter || showCrearListaModal || showVerListasModal || showEditListModal}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div 
-		class="absolute inset-0 bg-black/50 z-30 transition-opacity"
-		onclick={() => {
-			if (showEditListModal) {
-				closeEditListModal();
-				return;
-			}
-			if (showCrearListaModal || showVerListasModal) {
-				closeListModals();
-				return;
-			}
-			if (showCalendar) {
-				closeCalendar();
-				return;
-			}
-			if (showFilter) {
-				showFilter = false;
-				return;
-			}
-			showNewTask = false;
-			showTaskUpdate = false;
-			showTags = false;
-		}}
-	></div>
-{/if}
-
-<!-- Modal Filtros -->
-{#if showFilter}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 shadow-2xl border-t border-brand-divider max-h-[90%] overflow-y-auto">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		<div class="flex justify-between items-center mb-6">
-			<h3 class="text-lg font-bold text-brand-text">Filtrar</h3>
-			<button
-				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-				onclick={() => (showFilter = false)}
-				aria-label="Cerrar"
-			>
-				<X class="w-4 h-4" />
-			</button>
-		</div>
-
-		<section class="mb-6">
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Estado</p>
-			<div class="grid grid-cols-3 gap-2">
-				<button
-					type="button"
-					class="py-2.5 rounded-xl text-xs font-semibold border transition-colors {filterStatus === 'all'
-						? 'border-brand-accent bg-brand-accent text-brand-bg'
-						: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
-					onclick={() => (filterStatus = 'all')}
-				>
-					Todas
-				</button>
-				<button
-					type="button"
-					class="py-2.5 rounded-xl text-xs font-semibold border transition-colors {filterStatus === 'pending'
-						? 'border-brand-accent bg-brand-accent text-brand-bg'
-						: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
-					onclick={() => (filterStatus = 'pending')}
-				>
-					Pendientes
-				</button>
-				<button
-					type="button"
-					class="py-2.5 rounded-xl text-xs font-semibold border transition-colors {filterStatus === 'completed'
-						? 'border-brand-accent bg-brand-accent text-brand-bg'
-						: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
-					onclick={() => (filterStatus = 'completed')}
-				>
-					Completadas
-				</button>
-			</div>
-		</section>
-
-		<section class="mb-6">
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Tipo</p>
-			<div class="space-y-2">
-				<button
-					type="button"
-					class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {filterHasNovedad
-						? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
-						: 'border-brand-divider bg-brand-bg text-brand-text'}"
-					onclick={() => (filterHasNovedad = !filterHasNovedad)}
-				>
-					<span class="flex items-center gap-2 text-sm font-medium">
-						<StickyNote class="w-4 h-4" />
-						Con novedad
-					</span>
-					<span class="text-xs font-semibold">{filterHasNovedad ? 'Sí' : ''}</span>
-				</button>
-				<button
-					type="button"
-					class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {filterHasLists
-						? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
-						: 'border-brand-divider bg-brand-bg text-brand-text'}"
-					onclick={() => (filterHasLists = !filterHasLists)}
-				>
-					<span class="flex items-center gap-2 text-sm font-medium">
-						<ListChecks class="w-4 h-4" />
-						Con listas
-					</span>
-					<span class="text-xs font-semibold">{filterHasLists ? 'Sí' : ''}</span>
-				</button>
-				<button
-					type="button"
-					class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {filterSharedOnly
-						? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
-						: 'border-brand-divider bg-brand-bg text-brand-text'}"
-					onclick={() => {
-						filterSharedOnly = !filterSharedOnly;
-						if (!filterSharedOnly) filterSharedWithIds = [];
-					}}
-				>
-					<span class="flex items-center gap-2 text-sm font-medium">
-						<Share2 class="w-4 h-4" />
-						Compartidas
-					</span>
-					<span class="text-xs font-semibold">{filterSharedOnly ? 'Sí' : ''}</span>
-				</button>
-			</div>
-		</section>
-
-		{#if filterSharedOnly && contacts.length > 0}
-			<section class="mb-6">
-				<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Compartida con</p>
-				<div class="flex flex-wrap gap-2">
-					{#each contacts as contact (contact.id)}
-						<button
-							type="button"
-							class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {filterSharedWithIds.includes(contact.id)
-								? 'border-brand-accent bg-brand-accent text-brand-bg'
-								: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
-							onclick={() => toggleFilterContact(contact.id)}
-						>
-							{contactLabel(contact)}
-						</button>
-					{/each}
-				</div>
-				<p class="text-[11px] text-brand-text-muted mt-2">
-					Opcional: elige personas concretas. Si no eliges ninguna, muestra todas las compartidas.
-				</p>
-			</section>
-		{/if}
-
-		<section class="mb-6">
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-3">Etiquetas</p>
-			{#if tags.length === 0}
-				<p class="text-sm text-brand-text-muted">Aún no tienes etiquetas.</p>
-			{:else}
-				<div class="flex flex-wrap gap-2">
-					{#each tags as tag (tag.id)}
-						<button
-							type="button"
-							class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {filterTagIds.includes(tag.id)
-								? 'border-brand-accent text-brand-bg'
-								: 'border-brand-divider bg-brand-bg text-brand-text'}"
-							style={filterTagIds.includes(tag.id)
-								? `background-color: ${tag.color}; border-color: ${tag.color}`
-								: ''}
-							onclick={() => toggleFilterTag(tag.id)}
-						>
-							<span class="w-2 h-2 rounded-full shrink-0" style="background-color: {tag.color}"></span>
-							{tag.name}
-						</button>
-					{/each}
-				</div>
-			{/if}
-		</section>
-
-		<div class="flex gap-2">
-			{#if hasActiveFilters}
-				<button
-					type="button"
-					class="flex-1 py-3.5 rounded-xl border border-brand-divider text-brand-text-muted font-semibold text-sm hover:bg-brand-bg transition-colors"
-					onclick={clearFilters}
-				>
-					Limpiar
-				</button>
-			{/if}
-			<button
-				type="button"
-				class="flex-1 py-3.5 rounded-xl bg-brand-accent text-brand-bg font-bold text-sm hover:brightness-105 transition-colors"
-				onclick={() => (showFilter = false)}
-			>
-				Ver resultados
-			</button>
-		</div>
-	</div>
-{/if}
-
-<!-- Calendario Custom Bottom Sheet -->
-{#if showCalendar}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl {calendarMode === 'moveTask' ? 'z-50' : 'z-40'} p-6 pt-4 transform transition-transform shadow-2xl border-t border-brand-divider animate-in slide-in-from-bottom-8 duration-300">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		{#if calendarMode === 'moveTask'}
-			<div class="flex justify-between items-center mb-2">
-				<h3 class="text-lg font-bold text-brand-text">Modificar día</h3>
-				<button
-					class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-					onclick={closeCalendar}
-					aria-label="Cerrar"
-				>
-					<X class="w-4 h-4" />
-				</button>
-			</div>
-			<p class="text-sm text-brand-text-muted mb-5 truncate">{selectedTaskTitle}</p>
-		{/if}
-		
-		<div class="flex justify-between items-center mb-6">
-			<button class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text" onclick={prevMonth}>
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-			</button>
-			<h3 class="text-lg font-bold text-brand-text capitalize">{monthNames[calMonth]} {calYear}</h3>
-			<button class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text" onclick={nextMonth}>
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-			</button>
-		</div>
-		
-		<div class="grid grid-cols-7 gap-2 text-center mb-2">
-			{#each ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'] as dayStr}
-				<div class="text-xs font-bold text-brand-text-muted">{dayStr}</div>
-			{/each}
-		</div>
-		
-		<div class="grid grid-cols-7 gap-2 text-center mb-6">
-			{#each calendarDays as day}
-				{#if day === null}
-					<div></div>
-				{:else}
-					{@const highlightDate =
-						calendarMode === 'moveTask'
-							? (() => {
-									const task = tasks.find((t) => t.id === selectedTaskId);
-									const dateStr =
-										typeof task?.date === 'string' ? task.date : formatDateString(selectedDate);
-									const [y, m, d] = dateStr.split('-').map(Number);
-									return y && m && d ? new Date(y, m - 1, d) : selectedDate;
-								})()
-							: selectedDate}
-					{@const isSelected =
-						highlightDate.getDate() === day &&
-						highlightDate.getMonth() === calMonth &&
-						highlightDate.getFullYear() === calYear}
-					{@const hasActiveTasks = daysWithActiveTasks.has(formatDayKey(calYear, calMonth, day))}
-					<!-- svelte-ignore a11y_consider_explicit_label -->
-					<button 
-						class="w-10 h-10 mx-auto flex items-center justify-center rounded-full text-sm transition-all {isSelected
-							? 'bg-brand-accent text-brand-bg font-bold shadow-md'
-							: hasActiveTasks
-								? 'text-brand-text ring-2 ring-brand-accent'
-								: 'text-brand-text hover:bg-brand-accent-muted'}"
-						onclick={() => selectCalendarDate(day)}
-					>
-						{day}
-					</button>
-				{/if}
-			{/each}
-		</div>
-		{#if calendarMode === 'moveTask'}
-			<p class="text-xs text-brand-text-muted text-center">Elige el nuevo día para esta tarea.</p>
-		{/if}
-	</div>
-{/if}
-
-<!-- Tags Bottom Sheet -->
-{#if showTags}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 transform transition-transform shadow-2xl border-t border-brand-divider animate-in slide-in-from-bottom-8 duration-300 max-h-[85%] overflow-y-auto">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-		
-		<div class="flex justify-between items-center mb-6">
-			<h3 class="text-lg font-bold text-brand-text">Etiquetas</h3>
-			<button class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text" onclick={() => showTags = false}>
-				<X class="w-4 h-4" />
-			</button>
-		</div>
-
-		<div class="space-y-3 mb-6">
-			{#if tags.length === 0}
-				<p class="text-sm text-brand-text-muted text-center py-4">Aún no tienes etiquetas. Crea una como “Hogar” o “Trabajo”.</p>
-			{:else}
-				{#each tags as tag (tag.id)}
-					<div class="flex items-center justify-between gap-3 bg-brand-bg rounded-xl px-4 py-3">
-						<div class="flex items-center gap-3 min-w-0">
-							<span class="w-3 h-3 rounded-full shrink-0" style="background-color: {tag.color}"></span>
-							<span class="text-brand-text font-medium truncate">{tag.name}</span>
-						</div>
-						<button
-							class="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-							onclick={() => deleteTag(tag.id)}
-							aria-label="Eliminar etiqueta {tag.name}"
-						>
-							<Trash2 class="w-4 h-4" />
-						</button>
-					</div>
-				{/each}
-			{/if}
-		</div>
-
-		<div class="border-t border-brand-divider pt-5 space-y-4">
-			<input
-				type="text"
-				bind:value={newTagName}
-				placeholder="Nombre de la etiqueta..."
-				class="w-full bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30"
-			/>
-			<div class="flex items-center gap-2">
-				{#each TAG_COLORS as color}
-					<button
-						type="button"
-						class="w-8 h-8 rounded-full transition-transform {newTagColor === color ? 'ring-2 ring-white scale-110' : ''}"
-						style="background-color: {color}"
-						onclick={() => newTagColor = color}
-						aria-label="Color {color}"
-					></button>
-				{/each}
-			</div>
-			<button
-				class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
-				onclick={addTag}
-			>
-				<Plus class="w-5 h-5" />
-				Crear etiqueta
-			</button>
-		</div>
-	</div>
-{/if}
-
-<!-- New Task Bottom Sheet -->
+<!-- Modals Block -->
 {#if showNewTask}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 transform transition-transform shadow-2xl border-t border-brand-divider animate-in slide-in-from-bottom-8 duration-300">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-		
-		<div class="flex justify-between items-center mb-6">
-			<h3 class="text-lg font-bold text-brand-text">Nueva Tarea</h3>
-			<button class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text" onclick={() => showNewTask = false}>
-				<X class="w-4 h-4" />
-			</button>
-		</div>
-		
-		<input 
-			type="text" 
-			bind:value={newTaskTitle}
-			placeholder="Escribe tu tarea..." 
-			class="w-full bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-5"
-		/>
-
-		<div class="mb-8">
-			<label for="new-task-tag" class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Etiqueta</label>
-			{#if tags.length === 0}
-				<button
-					type="button"
-					class="w-full py-3.5 rounded-xl border border-brand-accent/50 bg-brand-accent-muted text-brand-accent font-semibold text-sm flex items-center justify-center gap-2 hover:bg-brand-accent/20 transition-colors"
-					onclick={() => { showNewTask = false; showTags = true; }}
-				>
-					<Tag class="w-4 h-4" />
-					Crear tu primera etiqueta
-				</button>
-			{:else}
-				<TagSelect id="new-task-tag" {tags} bind:value={selectedTagId} />
-			{/if}
-		</div>
-		
-		<button 
-			class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
-			onclick={addTask}
-		>
-			<Plus class="w-5 h-5" />
-			Añadir Tarea
-		</button>
-	</div>
-{/if}
-
-<!-- Detalle de la Tarea Bottom Sheet -->
-{#if showTaskUpdate}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 transform transition-transform shadow-2xl border-t border-brand-divider animate-in slide-in-from-bottom-8 duration-300 max-h-[90%] overflow-y-auto">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-		
-		<div class="flex justify-between items-center mb-2">
-			<h3 class="text-lg font-bold text-brand-text">Tarea</h3>
-			<button
-				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-				onclick={() => {
-					closeListModals();
-					showTaskOptions = false;
-					showTaskUpdate = false;
-				}}
-			>
-				<X class="w-4 h-4" />
-			</button>
-		</div>
-
-		<div class="grid grid-cols-3 gap-2 mb-5">
-			<button
-				type="button"
-				class="flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 transition-colors {taskPanel === 'novedad'
-					? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
-					: 'border-brand-divider bg-brand-bg text-brand-text'}"
-				onclick={() => setTaskPanel('novedad')}
-			>
-				<StickyNote class="w-5 h-5" />
-				<span class="text-[11px] font-semibold text-center leading-tight">Crear novedad</span>
-			</button>
-			<button
-				type="button"
-				class="flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 transition-colors {taskPanel === 'share'
-					? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
-					: 'border-brand-divider bg-brand-bg text-brand-text'}"
-				onclick={() => setTaskPanel('share')}
-			>
-				<Share2 class="w-5 h-5" />
-				<span class="text-[11px] font-semibold text-center leading-tight">Compartir</span>
-			</button>
-			<button
-				type="button"
-				class="flex flex-col items-center justify-center gap-1.5 rounded-xl border px-2 py-3 transition-colors {taskPanel === 'listas'
-					? 'border-brand-accent bg-brand-accent-muted text-brand-accent'
-					: 'border-brand-divider bg-brand-bg text-brand-text'}"
-				onclick={() => setTaskPanel('listas')}
-			>
-				<ListChecks class="w-5 h-5" />
-				<span class="text-[11px] font-semibold text-center leading-tight">Listas</span>
-			</button>
-		</div>
-
-		{#if taskPanel === 'menu'}
-			<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2" for="edit-task-title">
-				Título
-			</label>
-			<input
-				id="edit-task-title"
-				type="text"
-				bind:value={selectedTaskTitle}
-				class="w-full bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-4"
-				placeholder="Nombre de la tarea"
-			/>
-
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Etiqueta</p>
-			<div class="mb-4">
-				<TagSelect tags={tags} bind:value={editingTagId} id="edit-task-tag" />
+	<div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
+		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-md p-6 shadow-2xl">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-lg font-bold text-brand-text">Nueva Tarjeta</h3>
+				<button class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted" onclick={() => showNewTask = false}><X class="w-5 h-5"/></button>
 			</div>
-
-			<button
-				type="button"
-				class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-3.5 rounded-xl transition-colors mb-3"
-				onclick={saveTaskDetails}
-			>
-				Guardar cambios
-			</button>
-			<button
-				type="button"
-				class="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl border border-brand-accent/60 text-brand-accent font-semibold hover:bg-brand-accent-muted transition-colors mb-3"
-				onclick={focusOnSelectedTask}
-			>
-				<Timer class="w-5 h-5" />
-				Enfocar con Pomodoro
-			</button>
-			<p class="text-sm text-brand-text-muted mb-2">
-				O elige una opción arriba para novedad, compartir o listas.
-			</p>
-		{:else if taskPanel === 'listas'}
-			<p class="text-sm text-brand-text-muted mb-3">
-				¿Qué quieres hacer con las listas?
-			</p>
-			<div class="grid grid-cols-2 gap-2 mb-5">
-				<button
-					type="button"
-					class="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-brand-divider bg-brand-bg text-brand-text px-2 py-3 hover:border-brand-accent hover:text-brand-accent transition-colors"
-					onclick={openCrearListaModal}
-				>
-					<ListChecks class="w-5 h-5" />
-					<span class="text-[11px] font-semibold text-center leading-tight">Crear lista</span>
-				</button>
-				<button
-					type="button"
-					class="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-brand-divider bg-brand-bg text-brand-text px-2 py-3 hover:border-brand-accent hover:text-brand-accent transition-colors"
-					onclick={openVerListasModal}
-				>
-					<List class="w-5 h-5" />
-					<span class="text-[11px] font-semibold text-center leading-tight">Ver listas</span>
-				</button>
-			</div>
-		{:else if taskPanel === 'novedad'}
-			<textarea 
-				bind:value={editingNovedad}
-				placeholder="Escribe aquí cualquier novedad o detalle..." 
-				class="w-full h-28 bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-4 resize-none"
-			></textarea>
 			
-			<button 
-				class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors mb-3"
-				onclick={saveNovedad}
-			>
-				Guardar novedad
-			</button>
-
-			{#if editingNovedad.trim()}
-				<button 
-					class="w-full py-3 rounded-xl border border-red-400/40 text-red-400 font-semibold text-sm hover:bg-red-500/10 transition-colors mb-3"
-					onclick={() => { editingNovedad = ''; saveNovedad(); }}
-				>
-					Eliminar novedad
-				</button>
-			{/if}
-		{:else if taskPanel === 'share'}
-			<p class="text-sm text-brand-text-muted mb-3">
-				Comparte esta tarea con tus contactos. Ellos la verán en su lista.
-			</p>
-			{#if contacts.length === 0}
-				<p class="text-sm text-brand-text-muted mb-3">
-					Aún no tienes contactos. Agrégalos desde Perfil.
-				</p>
-			{:else}
-				<div class="space-y-2 mb-3 max-h-52 overflow-y-auto">
-					{#each contacts as contact (contact.id)}
-						{@const isShared = sharedWithIds.has(contact.id)}
-						<button
-							type="button"
-							class="w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors {isShared
-								? 'border-brand-accent bg-brand-accent-muted'
-								: 'border-brand-divider bg-brand-bg'}"
-							disabled={shareBusyId === contact.id}
-							onclick={() => toggleShareWithContact(contact.id)}
-						>
-							<div class="min-w-0">
-								<p class="font-medium text-brand-text truncate">{contactLabel(contact)}</p>
-								<p class="text-xs text-brand-text-muted truncate">{contact.email}</p>
-							</div>
-							<span class="text-xs font-semibold shrink-0 {isShared ? 'text-brand-accent' : 'text-brand-text-muted'}">
-								{shareBusyId === contact.id ? '...' : isShared ? 'Compartida' : 'Compartir'}
-							</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
-		{/if}
-
-		{#if taskActionError}
-			<p class="text-sm text-red-400 mb-3">{taskActionError}</p>
-		{/if}
-		{#if taskActionSuccess}
-			<div class="mb-3 flex justify-center">
-				<div class="rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-medium px-3 py-1.5">
-					{taskActionSuccess}
-				</div>
-			</div>
-		{/if}
-
-		<div class="border-t border-brand-divider pt-4 flex justify-end relative">
-			<button
-				type="button"
-				class="p-2.5 rounded-full bg-brand-bg border border-brand-divider text-brand-text-muted hover:text-brand-text hover:border-brand-accent transition-colors"
-				onclick={() => (showTaskOptions = !showTaskOptions)}
-				aria-label="Opciones"
-			>
-				<Settings class="w-4 h-4" />
-			</button>
-			{#if showTaskOptions}
-				{@const selectedTask = tasks.find((t) => t.id === selectedTaskId)}
-				<div class="absolute bottom-full right-0 mb-2 min-w-[11rem] rounded-xl border border-brand-divider bg-brand-surface-elevated shadow-xl overflow-hidden z-10">
-					<button
-						type="button"
-						class="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-brand-text hover:bg-brand-accent-muted transition-colors"
-						onclick={openMoveTaskCalendar}
-					>
-						<Calendar class="w-4 h-4 text-brand-accent" />
-						Modificar día
-					</button>
-					{#if !selectedTask?.is_shared_with_me}
-						<button
-							type="button"
-							class="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-							onclick={() => {
-								showTaskOptions = false;
-								deleteTask();
-							}}
-						>
-							<Trash2 class="w-4 h-4" />
-							Eliminar tarea
-						</button>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	</div>
-{/if}
-
-<!-- Modal Crear lista -->
-{#if showCrearListaModal}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-50 p-6 pt-4 shadow-2xl border-t border-brand-divider max-h-[90%] overflow-y-auto">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		<div class="flex justify-between items-center mb-2">
-			<h3 class="text-lg font-bold text-brand-text">Crear lista</h3>
-			<button
-				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-				onclick={closeListModals}
-				aria-label="Cerrar"
-			>
-				<X class="w-4 h-4" />
-			</button>
-		</div>
-		<p class="text-sm text-brand-text-muted mb-5 truncate">{selectedTaskTitle}</p>
-
-		<label for="list-name" class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">
-			Nombre de la lista
-		</label>
-		<input
-			id="list-name"
-			type="text"
-			bind:value={newListName}
-			placeholder="Ej. Compras, Pendientes..."
-			class="w-full bg-brand-bg border border-brand-divider rounded-xl px-3 py-2.5 text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-4"
-		/>
-
-		<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">
-			Ítems
-		</label>
-		<form
-			class="flex gap-2 mb-3"
-			onsubmit={(e) => {
-				e.preventDefault();
-				addDraftItem();
-			}}
-		>
-			<input
-				type="text"
-				bind:value={newDraftItem}
-				placeholder="Nuevo ítem..."
-				class="flex-1 min-w-0 bg-brand-bg border border-brand-divider rounded-xl px-3 py-2.5 text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30"
+			<input 
+				type="text" 
+				bind:value={newTaskTitle} 
+				placeholder="¿Qué necesitas hacer?" 
+				class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-brand-text placeholder-brand-text-muted mb-4 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none"
+				onkeydown={(e) => e.key === 'Enter' && addTask()}
 			/>
-			<button
-				type="submit"
-				class="shrink-0 bg-brand-accent text-brand-bg font-bold px-4 rounded-xl hover:brightness-105 transition-colors"
-				aria-label="Agregar ítem"
-			>
-				<Plus class="w-5 h-5" />
-			</button>
-		</form>
 
-		{#if draftListItems.length === 0}
-			<p class="text-sm text-brand-text-muted mb-4">
-				Agrega los ítems de tu lista (opcional) y luego guárdala.
-			</p>
-		{:else}
-			<div class="space-y-2 mb-4 max-h-48 overflow-y-auto">
-				{#each draftListItems as item, index (index)}
-					<div class="flex items-center gap-3 bg-brand-bg border border-brand-divider rounded-xl px-3 py-2.5">
-						<Circle class="w-4 h-4 text-brand-text-muted shrink-0" />
-						<span class="flex-1 text-sm text-brand-text truncate">{item}</span>
-						<button
-							type="button"
-							class="shrink-0 p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg"
-							onclick={() => removeDraftItem(index)}
-							aria-label="Quitar ítem"
-						>
-							<Trash2 class="w-4 h-4" />
-						</button>
+			{#if tags.length > 0}
+				<div class="mb-6">
+					<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Etiqueta</label>
+					<div class="flex flex-wrap gap-2">
+						{#each tags as tag}
+							<button 
+								class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors {selectedTagId === tag.id ? 'bg-brand-surface-elevated' : 'bg-[#0d1216] border-brand-divider text-brand-text-muted hover:bg-brand-surface-elevated'}"
+								style={selectedTagId === tag.id ? `border-color: ${tag.color}; color: ${tag.color};` : ''}
+								onclick={() => selectedTagId = tag.id}
+							>
+								{tag.name}
+							</button>
+						{/each}
 					</div>
-				{/each}
-			</div>
-		{/if}
+				</div>
+			{/if}
 
-		{#if listaError}
-			<p class="text-sm text-red-400 mb-3">{listaError}</p>
-		{/if}
-
-		<button
-			class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-3.5 rounded-xl transition-colors"
-			onclick={saveNewList}
-		>
-			Guardar lista
-		</button>
-	</div>
-{/if}
-
-<!-- Modal Ver listas -->
-{#if showVerListasModal}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-50 p-6 pt-4 shadow-2xl border-t border-brand-divider max-h-[90%] overflow-y-auto">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		<div class="flex justify-between items-center mb-2 gap-2">
-			{#if selectedList}
-				<button
-					type="button"
-					class="flex items-center gap-2 text-brand-accent font-medium text-sm shrink-0"
-					onclick={() => {
-						selectedList = null;
-						selectedListItems = [];
-						closeEditListModal();
-					}}
-				>
-					<ArrowLeft class="w-4 h-4" />
-					Volver atrás
+			<div class="flex justify-end gap-3">
+				<button class="px-4 py-2 rounded-xl text-brand-text font-bold hover:bg-brand-surface-elevated transition-colors" onclick={() => showNewTask = false}>Cancelar</button>
+				<button class="px-5 py-2 bg-brand-accent text-brand-bg font-bold rounded-xl hover:brightness-105 transition-colors flex items-center gap-2 shadow-[0_0_10px_var(--color-brand-accent-muted)]" onclick={addTask}>
+					<Plus class="w-4 h-4"/> Crear
 				</button>
-				<div class="flex items-center gap-1">
-					<button
-						type="button"
-						class="p-2 rounded-full text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors"
-						onclick={openEditListModal}
-						aria-label="Modificar lista"
-					>
-						<MoreVertical class="w-5 h-5" />
-					</button>
-					<button
-						class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-						onclick={closeListModals}
-						aria-label="Cerrar"
-					>
-						<X class="w-4 h-4" />
-					</button>
-				</div>
-			{:else}
-				<h3 class="text-lg font-bold text-brand-text">Ver listas</h3>
-				<button
-					class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-					onclick={closeListModals}
-					aria-label="Cerrar"
-				>
-					<X class="w-4 h-4" />
-				</button>
-			{/if}
-		</div>
-
-		{#if selectedList}
-			<h3 class="text-lg font-bold text-brand-text mb-1 truncate">{selectedList.name}</h3>
-			<p class="text-sm text-brand-text-muted mb-5 truncate">{selectedTaskTitle}</p>
-
-			{#if listDetailLoading}
-				<p class="text-sm text-brand-text-muted mb-3">Cargando ítems...</p>
-			{:else if selectedListItems.length === 0}
-				<p class="text-sm text-brand-text-muted mb-3">
-					Esta lista no tiene ítems. Usa los tres puntos para agregar.
-				</p>
-			{:else}
-				<div class="space-y-2 mb-3 max-h-64 overflow-y-auto">
-					{#each selectedListItems as item (item.id)}
-						<div class="flex items-center gap-3 bg-brand-bg border border-brand-divider rounded-xl px-3 py-2.5">
-							<button
-								type="button"
-								class="shrink-0 text-brand-text-muted hover:text-brand-accent transition-colors"
-								onclick={() => toggleListItem(item)}
-								aria-label={item.is_completed ? 'Marcar pendiente' : 'Marcar completado'}
-							>
-								{#if item.is_completed}
-									<CheckCircle2 class="w-5 h-5 text-brand-accent" />
-								{:else}
-									<Circle class="w-5 h-5" />
-								{/if}
-							</button>
-							<span class="flex-1 text-sm min-w-0 truncate {item.is_completed ? 'text-brand-text-muted line-through' : 'text-brand-text'}">
-								{item.title}
-							</span>
-							<button
-								type="button"
-								class="shrink-0 p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg"
-								onclick={() => deleteListItem(item.id)}
-								aria-label="Eliminar ítem"
-							>
-								<Trash2 class="w-4 h-4" />
-							</button>
-						</div>
-					{/each}
-				</div>
-				<p class="text-xs text-brand-text-muted mb-3">
-					{selectedListItems.filter((i) => i.is_completed).length}/{selectedListItems.length} completados
-				</p>
-			{/if}
-		{:else}
-			<p class="text-sm text-brand-text-muted mb-5 truncate">{selectedTaskTitle}</p>
-
-			{#if listsLoading}
-				<p class="text-sm text-brand-text-muted mb-3">Cargando listas...</p>
-			{:else if taskLists.length === 0}
-				<p class="text-sm text-brand-text-muted mb-3">
-					Aún no hay listas. Usa “Crear lista” para agregar una.
-				</p>
-			{:else}
-				<div class="space-y-2 mb-3 max-h-72 overflow-y-auto">
-					{#each taskLists as list (list.id)}
-						<div class="flex items-center gap-2 bg-brand-bg border border-brand-divider rounded-xl overflow-hidden">
-							<button
-								type="button"
-								class="flex-1 min-w-0 text-left px-4 py-3 hover:bg-brand-surface-elevated transition-colors"
-								onclick={() => loadListItems(list)}
-							>
-								<p class="font-medium text-brand-text truncate">{list.name}</p>
-								<p class="text-xs text-brand-text-muted">
-									{list.done_count ?? 0}/{list.item_count ?? 0} completados
-								</p>
-							</button>
-							<button
-								type="button"
-								class="shrink-0 p-3 text-red-400 hover:bg-red-500/10"
-								onclick={() => deleteTaskList(list.id)}
-								aria-label="Eliminar lista {list.name}"
-							>
-								<Trash2 class="w-4 h-4" />
-							</button>
-						</div>
-					{/each}
-				</div>
-			{/if}
-		{/if}
-
-		{#if listaError && !showEditListModal}
-			<p class="text-sm text-red-400 mb-3">{listaError}</p>
-		{/if}
-	</div>
-{/if}
-
-<!-- Modal Modificar lista -->
-{#if showEditListModal && selectedList}
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-[60] p-6 pt-4 shadow-2xl border-t border-brand-divider max-h-[90%] overflow-y-auto">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		{#if listaSuccess}
-			<div class="mb-4 flex justify-center">
-				<div class="rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-medium px-3 py-1.5">
-					{listaSuccess}
-				</div>
 			</div>
-		{/if}
-
-		<div class="flex justify-between items-center mb-6">
-			<h3 class="text-lg font-bold text-brand-text">Modificar lista</h3>
-			<button
-				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
-				onclick={closeEditListModal}
-				aria-label="Cerrar"
-			>
-				<X class="w-4 h-4" />
-			</button>
 		</div>
-
-		<label for="edit-list-name" class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">
-			Nombre
-		</label>
-		<input
-			id="edit-list-name"
-			type="text"
-			bind:value={editListName}
-			class="w-full bg-brand-bg border border-brand-divider rounded-xl px-3 py-2.5 text-sm text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-5"
-		/>
-
-		<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">
-			Agregar ítem
-		</label>
-		<form
-			class="flex gap-2 mb-5"
-			onsubmit={(e) => {
-				e.preventDefault();
-				addItemToSelectedList();
-			}}
-		>
-			<input
-				type="text"
-				bind:value={newListItemTitle}
-				placeholder="Nuevo ítem..."
-				class="flex-1 min-w-0 bg-brand-bg border border-brand-divider rounded-xl px-3 py-2.5 text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30"
-			/>
-			<button
-				type="submit"
-				class="shrink-0 bg-brand-accent text-brand-bg font-bold px-4 rounded-xl hover:brightness-105 transition-colors"
-				aria-label="Agregar ítem"
-			>
-				<Plus class="w-5 h-5" />
-			</button>
-		</form>
-
-		{#if listaError}
-			<p class="text-sm text-red-400 mb-3">{listaError}</p>
-		{/if}
-
-		<button
-			class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-3.5 rounded-xl transition-colors mb-3"
-			onclick={saveListName}
-		>
-			Guardar
-		</button>
-
-		<button
-			class="w-full py-3.5 rounded-xl bg-red-500/15 text-red-400 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-red-500/25 transition-colors"
-			onclick={() => selectedList && deleteTaskList(selectedList.id)}
-		>
-			<Trash2 class="w-4 h-4" />
-			Eliminar lista
-		</button>
 	</div>
 {/if}
-
-<Toast bind:show={showTaskCreatedToast} message="Tarea agregada correctamente" />

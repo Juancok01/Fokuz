@@ -7,7 +7,11 @@
 		Plus,
 		RefreshCw,
 		Trash2,
-		X
+		X,
+		Flame,
+		Zap,
+		TrendingUp,
+		Info
 	} from 'lucide-svelte';
 	import { untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
@@ -48,9 +52,9 @@
 	const healthTextClass = (health: HabitHealth) => {
 		switch (health) {
 			case 'green':
-				return 'text-emerald-400';
+				return 'text-brand-accent text-shadow-sm';
 			case 'yellow':
-				return 'text-amber-300';
+				return 'text-amber-400';
 			case 'red':
 				return 'text-red-400';
 			default:
@@ -61,11 +65,11 @@
 	const healthDotClass = (health: HabitHealth) => {
 		switch (health) {
 			case 'green':
-				return 'bg-emerald-400';
+				return 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]';
 			case 'yellow':
-				return 'bg-amber-300';
+				return 'bg-amber-400 shadow-[0_0_8px_var(--color-amber-400)]';
 			case 'red':
-				return 'bg-red-400';
+				return 'bg-red-400 shadow-[0_0_8px_var(--color-red-400)]';
 			default:
 				return 'bg-brand-divider';
 		}
@@ -75,7 +79,16 @@
 	let viewYear = $state(today.getFullYear());
 	let viewMonth = $state(today.getMonth());
 
-	let habits = $state<Habit[]>([]);
+	type HabitWithMockData = Habit & { streak: number };
+	let habits = $state<HabitWithMockData[]>([]);
+	let customCategories = $state<string[]>([]);
+	let currentFilter = $state('Todos');
+	const availableCategories = $derived([...new Set(['General', ...customCategories, ...habits.map((h) => h.tag || 'General')])]);
+	const filters = $derived(['Todos', ...availableCategories]);
+	const filteredHabits = $derived(
+		currentFilter === 'Todos' ? habits : habits.filter((h) => (h.tag || 'General') === currentFilter)
+	);
+
 	/** Claves `${habitId}:${YYYY-MM-DD}` */
 	let doneKeys = $state(new Set<string>());
 	let loading = $state(true);
@@ -83,19 +96,23 @@
 	let fetchId = 0;
 	let loadedMonthKey: string | null = null;
 
-	let sheetMode = $state<'closed' | 'create' | 'detail' | 'edit'>('closed');
-	let selectedHabit = $state<Habit | null>(null);
+	let sheetMode = $state<'closed' | 'create' | 'detail' | 'edit' | 'delete-confirm' | 'manage-categories'>('closed');
+	let selectedHabit = $state<HabitWithMockData | null>(null);
 	let formName = $state('');
+	let formTag = $state('General');
+	let formNewCategory = $state('');
+	let categoryError = $state('');
+	let editingCategory = $state<{ old: string; new: string } | null>(null);
 	let formIcon = $state<HabitIconId>('sparkles');
 	let formWeekdays = $state<number[]>([1, 2, 3, 4, 5]);
 	let formError = $state('');
 	let formBusy = $state(false);
 	let toggleBusyKey = $state<string | null>(null);
-	/** false si falta la columna icon en Supabase (SQL 010) */
+	/** false si falta la columna icon o tag en Supabase (SQL 010, 011) */
 	let iconsPersist = $state(true);
 
 	const ICON_SQL_HINT =
-		'No se pudo guardar el icono. En Supabase → SQL Editor ejecuta el archivo 010_habit_icon.sql y vuelve a intentar.';
+		'No se pudo guardar. En Supabase → SQL Editor, asegúrate de tener las columnas "icon" y "tag" en la tabla habits y vuelve a intentar.';
 
 	const dayCount = $derived(daysInMonth(viewYear, viewMonth));
 	const todayKey = $derived(formatDateInTz());
@@ -104,7 +121,7 @@
 	const logKey = (habitId: number, dateStr: string) => `${habitId}:${dateStr}`;
 
 	const habitStats = $derived.by(() => {
-		const map = new Map<number, { total: number; done: number; pct: number; health: HabitHealth }>();
+		const map = new Map<number, { total: number; done: number; pct: number; health: HabitHealth; streak: number }>();
 		for (const habit of habits) {
 			let total = 0;
 			let done = 0;
@@ -115,7 +132,29 @@
 				if (doneKeys.has(logKey(habit.id, formatDayKey(viewYear, viewMonth, day)))) done += 1;
 			}
 			const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-			map.set(habit.id, { total, done, pct, health: habitHealthFromPct(pct, total) });
+
+			// Calculate max streak in the month
+			let maxStreak = 0;
+			let currentStreak = 0;
+			const isCurrentMonth = (viewYear === today.getFullYear() && viewMonth === today.getMonth());
+			const endDay = isCurrentMonth ? today.getDate() : dayCount;
+
+			for (let d = 1; d <= endDay; d++) {
+				const w = weekdayForMonthDay(viewYear, viewMonth, d);
+				if (habitIsScheduledOn(habit, w)) {
+					if (doneKeys.has(logKey(habit.id, formatDayKey(viewYear, viewMonth, d)))) {
+						currentStreak++;
+						if (currentStreak > maxStreak) {
+							maxStreak = currentStreak;
+						}
+					} else {
+						currentStreak = 0;
+					}
+				}
+			}
+			const streak = maxStreak;
+
+			map.set(habit.id, { total, done, pct, health: habitHealthFromPct(pct, total), streak });
 		}
 		return map;
 	});
@@ -130,6 +169,134 @@
 		const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 		return { total, done, pct, health: habitHealthFromPct(pct, total) };
 	});
+
+	const perfectDays = $derived.by(() => {
+		if (habits.length === 0) return 0;
+		let count = 0;
+		for (let day = 1; day <= dayCount; day++) {
+			const weekday = weekdayForMonthDay(viewYear, viewMonth, day);
+			let scheduled = 0;
+			let done = 0;
+			for (const h of habits) {
+				if (habitIsScheduledOn(h, weekday)) {
+					scheduled++;
+					if (doneKeys.has(logKey(h.id, formatDayKey(viewYear, viewMonth, day)))) {
+						done++;
+					}
+				}
+			}
+			if (scheduled > 0 && done === scheduled) {
+				count++;
+			}
+		}
+		return count;
+	});
+
+	const strongestHabit = $derived.by(() => {
+		if (habits.length === 0) return null;
+		let best = null;
+		
+		for (const habit of habits) {
+			const stats = habitStats.get(habit.id);
+			if (!stats) continue;
+			
+			if (!best) {
+				best = { habit, stats };
+				continue;
+			}
+			
+			if (stats.pct > best.stats.pct) {
+				best = { habit, stats };
+			} else if (stats.pct === best.stats.pct) {
+				if (stats.streak > best.stats.streak) {
+					best = { habit, stats };
+				}
+			}
+		}
+		return best;
+	});
+
+	const disciplinePeak = $derived.by(() => {
+		if (habits.length === 0) return null;
+		
+		// Map from weekday (0-6) to { total, done }
+		const dayStats = new Map<number, { total: number, done: number }>();
+		for (let i = 0; i <= 6; i++) {
+			dayStats.set(i, { total: 0, done: 0 });
+		}
+
+		for (let day = 1; day <= dayCount; day++) {
+			const weekday = weekdayForMonthDay(viewYear, viewMonth, day);
+			for (const h of habits) {
+				if (habitIsScheduledOn(h, weekday)) {
+					const stats = dayStats.get(weekday)!;
+					stats.total++;
+					if (doneKeys.has(logKey(h.id, formatDayKey(viewYear, viewMonth, day)))) {
+						stats.done++;
+					}
+				}
+			}
+		}
+
+		let bestDays: number[] = [];
+		let bestPct = -1;
+
+		for (const [day, stats] of dayStats.entries()) {
+			if (stats.total > 0) {
+				const pct = Math.round((stats.done / stats.total) * 100);
+				if (pct > bestPct) {
+					bestPct = pct;
+					bestDays = [day];
+				} else if (pct === bestPct && pct > 0) {
+					bestDays.push(day);
+				}
+			}
+		}
+
+		if (bestDays.length === 0 || bestPct === 0) return null;
+
+		const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+		const daysStr = bestDays.length > 2 
+			? `${bestDays.length} días empatados`
+			: bestDays.map(d => capitalize(WEEKDAY_NAMES[d])).join(' & ');
+
+		return {
+			days: daysStr,
+			pct: bestPct
+		};
+	});
+
+	const weakestHabits = $derived.by(() => {
+		if (habits.length === 0) return [];
+		let worstScore = Infinity;
+		let worstList: typeof habits = [];
+		
+		for (const habit of habits) {
+			const stats = habitStats.get(habit.id);
+			if (!stats) continue;
+			
+			const score = stats.pct * 1000 + stats.streak;
+			
+			if (score < worstScore) {
+				worstScore = score;
+				worstList = [habit];
+			} else if (score === worstScore) {
+				worstList.push(habit);
+			}
+		}
+		return worstList;
+	});
+
+	const FOKUZ_QUOTES = [
+		"La consistencia vence a la intensidad. Pequeñas victorias diarias forjan un carácter inquebrantable.",
+		"No te elevas al nivel de tus metas, caes al nivel de tus sistemas.",
+		"El éxito es la suma de pequeños esfuerzos repetidos día tras día.",
+		"La motivación te hace empezar, el hábito te mantiene en marcha.",
+		"Céntrate en el progreso, no en la perfección.",
+		"Un viaje de mil millas comienza con un solo paso.",
+		"Tus hábitos de hoy determinan tu futuro de mañana."
+	];
+	const dailyQuote = $derived(FOKUZ_QUOTES[today.getDate() % FOKUZ_QUOTES.length]);
 
 	const selectedStats = $derived(
 		selectedHabit ? (habitStats.get(selectedHabit.id) ?? null) : null
@@ -168,13 +335,12 @@
 			let [habitsResult, logsResult] = await Promise.all([
 				supabase
 					.from('habits')
-					.select('id, name, weekdays, icon')
+					.select('id, name, weekdays, icon, tag')
 					.order('created_at', { ascending: true }),
 				supabase.from('habit_logs').select('habit_id, date').gte('date', start).lte('date', end)
 			]);
 
-			// Compat: si aún no corrieron 010_habit_icon.sql
-			if (habitsResult.error && /icon|schema cache/i.test(habitsResult.error.message)) {
+			if (habitsResult.error && /icon|tag|schema cache/i.test(habitsResult.error.message)) {
 				iconsPersist = false;
 				habitsResult = await supabase
 					.from('habits')
@@ -193,16 +359,44 @@
 				console.warn('Error al cargar logs de hábitos:', logsResult.error.message);
 			}
 
-			habits = (habitsResult.data ?? []).map((h) => ({
-				id: h.id,
-				name: h.name,
-				weekdays: normalizeWeekdays(h.weekdays),
-				icon: normalizeHabitIcon((h as { icon?: string | null }).icon)
-			}));
-
 			doneKeys = new Set(
 				(logsResult.data ?? []).map((row) => logKey(row.habit_id, row.date as string))
 			);
+
+			habits = (habitsResult.data ?? []).map((h) => {
+				const tag = (h as any).tag || 'General';
+				
+				// Calculate streak back from today/end of month
+				let streak = 0;
+				const isCurrentMonth = (viewYear === today.getFullYear() && viewMonth === today.getMonth());
+				const endDay = isCurrentMonth ? today.getDate() : days;
+				
+				for (let d = endDay; d >= 1; d--) {
+					const w = weekdayForMonthDay(viewYear, viewMonth, d);
+					if (habitIsScheduledOn({ weekdays: h.weekdays } as Habit, w)) {
+						if (doneKeys.has(logKey(h.id, formatDayKey(viewYear, viewMonth, d)))) {
+							streak++;
+						} else {
+							// Missed a scheduled day, break streak
+							// Unless it's today and not done yet (just ignore today in that case)
+							if (isCurrentMonth && d === endDay) {
+								continue; 
+							} else {
+								break;
+							}
+						}
+					}
+				}
+
+				return {
+					id: h.id,
+					name: h.name,
+					weekdays: normalizeWeekdays(h.weekdays),
+					icon: normalizeHabitIcon((h as { icon?: string | null }).icon),
+					streak,
+					tag
+				};
+			});
 			loadedMonthKey = key;
 		} finally {
 			if (requestId === fetchId) {
@@ -219,6 +413,79 @@
 			loadMonth();
 		});
 	});
+
+	$effect(() => {
+		const stored = localStorage.getItem('fokuz-categories');
+		if (stored) {
+			try {
+				customCategories = JSON.parse(stored);
+			} catch {}
+		}
+	});
+
+	$effect(() => {
+		if (customCategories.length > 0) {
+			localStorage.setItem('fokuz-categories', JSON.stringify(customCategories));
+		}
+	});
+
+	const addCategory = () => {
+		const cat = formNewCategory.trim();
+		if (cat && !customCategories.includes(cat)) {
+			customCategories = [...customCategories, cat];
+		}
+		formNewCategory = '';
+		categoryError = '';
+	};
+
+	const removeCategory = (cat: string) => {
+		const inUse = habits.some((h) => (h.tag || 'General') === cat);
+		if (inUse) {
+			categoryError = `No puedes eliminar "${cat}" porque está asignada a uno o más hábitos activos.`;
+			return;
+		}
+		customCategories = customCategories.filter((c) => c !== cat);
+		categoryError = '';
+	};
+
+	const startEditCategory = (cat: string) => {
+		editingCategory = { old: cat, new: cat };
+		categoryError = '';
+	};
+
+	const saveEditCategory = async () => {
+		if (!editingCategory) return;
+		const oldCat = editingCategory.old;
+		const newCat = editingCategory.new.trim();
+		
+		if (!newCat || newCat === oldCat) {
+			editingCategory = null;
+			return;
+		}
+
+		// Update custom categories
+		if (customCategories.includes(oldCat)) {
+			customCategories = customCategories.map((c) => (c === oldCat ? newCat : c));
+		} else if (!customCategories.includes(newCat)) {
+			customCategories = [...customCategories, newCat];
+		}
+
+		// Update local habits
+		const hasHabits = habits.some(h => (h.tag || 'General') === oldCat);
+		if (hasHabits) {
+			habits = habits.map((h) => ((h.tag || 'General') === oldCat ? { ...h, tag: newCat } : h));
+			
+			// Update in Supabase
+			if (supabase) {
+				const { error } = await supabase.from('habits').update({ tag: newCat }).eq('tag', oldCat);
+				if (error) {
+					categoryError = 'Error al renombrar en la base de datos: ' + error.message;
+				}
+			}
+		}
+
+		editingCategory = null;
+	};
 
 	const prevMonth = () => {
 		if (viewMonth === 0) {
@@ -244,13 +511,14 @@
 	const openCreate = () => {
 		selectedHabit = null;
 		formName = '';
+		formTag = 'General';
 		formIcon = 'sparkles';
 		formWeekdays = [1, 2, 3, 4, 5];
 		formError = '';
 		sheetMode = 'create';
 	};
 
-	const openDetail = (habit: Habit) => {
+	const openDetail = (habit: HabitWithMockData) => {
 		selectedHabit = habit;
 		formError = '';
 		sheetMode = 'detail';
@@ -259,6 +527,7 @@
 	const openEdit = () => {
 		if (!selectedHabit) return;
 		formName = selectedHabit.name;
+		formTag = selectedHabit.tag || 'General';
 		formIcon = selectedHabit.icon;
 		formWeekdays = [...selectedHabit.weekdays];
 		formError = '';
@@ -293,7 +562,7 @@
 				const tempId = -Date.now();
 				habits = [
 					...habits,
-					{ id: tempId, name, weekdays: [...formWeekdays], icon: formIcon }
+					{ id: tempId, name, weekdays: [...formWeekdays], icon: formIcon, streak: 0, tag: formTag.trim() || 'General' }
 				];
 				sheetMode = 'closed';
 				return;
@@ -301,12 +570,12 @@
 
 			const { data, error } = await supabase
 				.from('habits')
-				.insert([{ name, weekdays: formWeekdays, icon: formIcon }])
-				.select('id, name, weekdays, icon')
+				.insert([{ name, weekdays: formWeekdays, icon: formIcon, tag: formTag.trim() || 'General' }])
+				.select('id, name, weekdays, icon, tag')
 				.single();
 
 			if (error) {
-				if (/icon|schema cache/i.test(error.message)) {
+				if (/icon|tag|schema cache/i.test(error.message)) {
 					iconsPersist = false;
 					formError = ICON_SQL_HINT;
 				} else {
@@ -322,7 +591,9 @@
 					id: data.id,
 					name: data.name,
 					weekdays: normalizeWeekdays(data.weekdays),
-					icon: normalizeHabitIcon(data.icon)
+					icon: normalizeHabitIcon(data.icon),
+					streak: 0,
+					tag: data.tag || formTag.trim() || 'General'
 				}
 			];
 			sheetMode = 'closed';
@@ -350,11 +621,13 @@
 
 		try {
 			if (!supabase || habitId < 0) {
-				const next: Habit = {
+				const next = {
 					id: habitId,
 					name,
 					weekdays: [...formWeekdays],
-					icon: formIcon
+					icon: formIcon,
+					streak: selectedHabit.streak,
+					tag: formTag.trim() || 'General'
 				};
 				habits = habits.map((h) => (h.id === habitId ? next : h));
 				selectedHabit = next;
@@ -364,13 +637,13 @@
 
 			const { data, error } = await supabase
 				.from('habits')
-				.update({ name, weekdays: formWeekdays, icon: formIcon })
+				.update({ name, weekdays: formWeekdays, icon: formIcon, tag: formTag.trim() || 'General' })
 				.eq('id', habitId)
-				.select('id, name, weekdays, icon')
+				.select('id, name, weekdays, icon, tag')
 				.single();
 
 			if (error) {
-				if (/icon|schema cache/i.test(error.message)) {
+				if (/icon|tag|schema cache/i.test(error.message)) {
 					iconsPersist = false;
 					formError = ICON_SQL_HINT;
 				} else {
@@ -381,11 +654,13 @@
 			}
 
 			iconsPersist = true;
-			const saved: Habit = {
+			const saved = {
 				id: data.id,
 				name: data.name,
 				weekdays: normalizeWeekdays(data.weekdays),
-				icon: normalizeHabitIcon(data.icon)
+				icon: normalizeHabitIcon(data.icon),
+				streak: selectedHabit.streak,
+				tag: data.tag || formTag.trim() || 'General'
 			};
 			habits = habits.map((h) => (h.id === habitId ? saved : h));
 			selectedHabit = saved;
@@ -402,7 +677,6 @@
 
 	const deleteHabit = async () => {
 		if (!selectedHabit) return;
-		if (!confirm(`¿Eliminar el hábito “${selectedHabit.name}”?`)) return;
 
 		const habit = selectedHabit;
 		const previous = habits;
@@ -474,247 +748,354 @@
 	<title>Hábitos · Fokuz</title>
 </svelte:head>
 
-<header
-	class="flex items-center justify-between p-6 bg-brand-surface pb-4 rounded-b-3xl z-10 sticky top-0 border-b border-brand-divider"
->
-	<div class="flex items-center gap-3">
-		<RefreshCw class="w-6 h-6 text-brand-accent" />
-		<h1 class="text-xl font-bold text-brand-text">Hábitos</h1>
-	</div>
-	{#if refreshing}
-		<span class="text-[11px] text-brand-text-muted">Actualizando…</span>
-	{/if}
-</header>
-
-<div class="flex-1 overflow-y-auto px-4 py-4 pb-28">
-	<div class="flex items-center justify-between gap-2 mb-3 px-2">
-		<button
-			type="button"
-			class="p-2 rounded-full bg-brand-surface text-brand-text-muted hover:text-brand-text transition-colors"
-			onclick={prevMonth}
-			aria-label="Mes anterior"
-		>
-			<ChevronLeft class="w-5 h-5" />
-		</button>
-		<div class="text-center">
-			<p class="text-base font-bold text-brand-text">{MONTH_NAMES[viewMonth]} {viewYear}</p>
-			<p class="text-[11px] font-semibold {healthTextClass(monthProgress.health)}">
-				{monthProgress.done}/{monthProgress.total} · {monthProgress.pct}%
-			</p>
-		</div>
-		<button
-			type="button"
-			class="p-2 rounded-full bg-brand-surface text-brand-text-muted hover:text-brand-text transition-colors"
-			onclick={nextMonth}
-			aria-label="Mes siguiente"
-		>
-			<ChevronRight class="w-5 h-5" />
-		</button>
-	</div>
-
-	{#if !iconsPersist}
-		<div
-			class="mx-2 mb-3 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-200"
-		>
-			Los iconos no se están guardando. Ejecuta en Supabase el SQL
-			<span class="font-semibold">010_habit_icon.sql</span> y recarga.
-		</div>
-	{/if}
-
-	{#if habits.length > 0}
-		<div class="flex flex-wrap items-center justify-center gap-3 px-2 mb-4 text-[10px] text-brand-text-muted">
-			<span class="inline-flex items-center gap-1">
-				<span class="w-2 h-2 rounded-full bg-emerald-400"></span> ≥70%
-			</span>
-			<span class="inline-flex items-center gap-1">
-				<span class="w-2 h-2 rounded-full bg-amber-300"></span> 30–69%
-			</span>
-			<span class="inline-flex items-center gap-1">
-				<span class="w-2 h-2 rounded-full bg-red-400"></span> &lt;30%
-			</span>
-		</div>
-	{/if}
-
-	{#if loading && habits.length === 0}
-		<div class="space-y-3 px-2">
-			{#each [1, 2, 3] as _}
-				<div class="h-12 rounded-xl bg-brand-surface skeleton"></div>
-			{/each}
-		</div>
-	{:else if habits.length === 0}
-		<div class="flex flex-col items-center justify-center text-center px-6 py-16">
-			<div
-				class="w-14 h-14 rounded-2xl bg-brand-surface border border-brand-divider flex items-center justify-center mb-4"
-			>
-				<RefreshCw class="w-7 h-7 text-brand-accent" />
-			</div>
-			<h2 class="text-lg font-semibold text-brand-text mb-2">Sin hábitos aún</h2>
-			<p class="text-brand-text-muted text-sm max-w-xs mb-6">
-				Crea tu primer hábito y marca cada día en la matriz del mes.
-			</p>
-			<button
-				type="button"
-				class="bg-brand-accent text-brand-bg font-bold px-5 py-3 rounded-xl transition-colors hover:brightness-105"
-				onclick={openCreate}
-			>
-				Crear hábito
-			</button>
-		</div>
-	{:else}
-		<div class="overflow-x-auto -mx-1 px-1 pb-2">
-			<table class="border-separate border-spacing-y-2 border-spacing-x-1 min-w-max">
-				<thead>
-					<tr>
-						<th class="sticky left-0 z-10 bg-brand-bg pr-1.5 text-left w-11">
-							<span class="sr-only">Hábito</span>
-						</th>
-						{#each dayNumbers as day (day)}
-							{@const dateStr = formatDayKey(viewYear, viewMonth, day)}
-							<th
-								class="w-8 p-0 text-center text-[10px] font-semibold {dateStr === todayKey
-									? 'text-brand-accent'
-									: 'text-brand-text-muted'}"
-							>
-								{day}
-							</th>
-						{/each}
-					</tr>
-				</thead>
-				<tbody>
-					{#each habits as habit (habit.id)}
-						{@const stats = habitStats.get(habit.id)}
-						{@const health = stats?.health ?? 'neutral'}
-						<tr>
-							<th class="sticky left-0 z-10 bg-brand-bg pr-1.5 text-left align-middle w-11">
-								<button
-									type="button"
-									class="relative w-9 h-9 rounded-xl border border-brand-divider bg-brand-surface flex items-center justify-center transition-colors hover:border-brand-accent/50 {healthTextClass(
-										health
-									)}"
-									onclick={() => openDetail(habit)}
-									title={habit.name}
-									aria-label={habit.name}
-								>
-									<HabitIcon icon={habit.icon} class="w-4 h-4" />
-									<span
-										class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-brand-bg {healthDotClass(
-											health
-										)}"
-									></span>
-								</button>
-							</th>
-							{#each dayNumbers as day (day)}
-								{@const weekday = weekdayForMonthDay(viewYear, viewMonth, day)}
-								{@const scheduled = habitIsScheduledOn(habit, weekday)}
-								{@const dateStr = formatDayKey(viewYear, viewMonth, day)}
-								{@const key = logKey(habit.id, dateStr)}
-								{@const done = doneKeys.has(key)}
-								<td class="p-0 align-middle">
-									{#if scheduled}
-										<button
-											type="button"
-											class="w-8 h-8 rounded-md flex items-center justify-center border transition-colors {done
-												? 'bg-brand-accent border-brand-accent text-brand-bg'
-												: 'bg-brand-surface border-brand-divider hover:border-brand-accent/60'}"
-											aria-label="{habit.name}, día {day}: {done ? 'cumplido' : 'pendiente'}"
-											aria-pressed={done}
-											onclick={() => toggleCell(habit, day)}
-										>
-											{#if done}
-												<Check class="w-3.5 h-3.5" strokeWidth={3} />
-											{:else}
-												<span class="w-1.5 h-1.5 rounded-full bg-brand-divider"></span>
-											{/if}
-										</button>
-									{:else}
-										<div class="w-8 h-8 rounded-md bg-brand-bg/40" aria-hidden="true"></div>
-									{/if}
-								</td>
-							{/each}
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-		<p class="text-[11px] text-brand-text-muted px-2 mt-2">
-			Toca el icono para ver el nombre, editar o borrar. Toca una celda para marcar el día.
-		</p>
-	{/if}
-</div>
-
-{#if habits.length > 0}
-	<button
-		type="button"
-		class="absolute bottom-24 right-6 w-14 h-14 bg-brand-accent hover:brightness-105 text-brand-bg rounded-full shadow-lg shadow-black/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-20"
-		onclick={openCreate}
-		aria-label="Crear hábito"
-	>
-		<Plus class="w-7 h-7" />
-	</button>
-{/if}
-
-{#if sheetMode !== 'closed'}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="absolute inset-0 bg-black/50 z-30" onclick={closeSheet}></div>
-	<div
-		class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 shadow-2xl border-t border-brand-divider max-h-[85%] overflow-y-auto"
-	>
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		{#if sheetMode === 'detail' && selectedHabit}
-			<div class="flex justify-between items-start gap-3 mb-4">
-				<div class="flex items-start gap-3 min-w-0">
-					<span
-						class="w-11 h-11 rounded-xl border border-brand-divider bg-brand-bg flex items-center justify-center shrink-0 {healthTextClass(
-							selectedStats?.health ?? 'neutral'
-						)}"
-					>
-						<HabitIcon icon={selectedHabit.icon} class="w-5 h-5" />
-					</span>
-					<div class="min-w-0">
-						<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-1">Hábito</p>
-						<h3 class="text-lg font-bold text-brand-text break-words">{selectedHabit.name}</h3>
+<div class="flex-1 overflow-y-auto px-4 py-6 md:px-8 pb-32 w-full max-w-7xl mx-auto">
+	<!-- Top Section -->
+	<header class="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-8">
+		<div>
+			<div class="flex flex-col md:flex-row md:items-center gap-3">
+				<div class="flex items-center gap-3">
+					<div class="w-10 h-10 bg-brand-surface border border-brand-divider rounded-xl flex items-center justify-center shadow-sm">
+						<RefreshCw class="w-5 h-5 text-brand-accent" />
 					</div>
+					<h1 class="text-2xl font-bold text-brand-text tracking-tight">Hábitos</h1>
 				</div>
-				<button
-					type="button"
-					class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text transition-colors shrink-0"
-					onclick={closeSheet}
-					aria-label="Cerrar"
-				>
-					<X class="w-4 h-4" />
+				<span class="text-[10px] font-bold px-3 py-1 bg-brand-accent/10 text-brand-accent border border-brand-accent/20 rounded-full shrink-0 w-fit md:ml-2">
+					{MONTH_NAMES[viewMonth]} {viewYear}
+				</span>
+			</div>
+			<p class="text-[13px] text-brand-text-muted mt-3 xl:max-w-xl leading-relaxed">
+				Monitorea el progreso sostenido de cada hábito a lo largo del mes. Toca cualquier casilla para alternar estado.
+			</p>
+		</div>
+
+		<div class="flex flex-col md:flex-row gap-4">
+			<div class="flex items-center bg-[#0d1216] border border-brand-divider rounded-2xl p-1 shadow-inner h-fit">
+				<button type="button" class="p-2 hover:bg-brand-surface-elevated rounded-xl transition-colors" onclick={prevMonth} aria-label="Mes anterior">
+					<ChevronLeft class="w-4 h-4 text-brand-text-muted" />
+				</button>
+				<div class="px-4 text-center min-w-[140px]">
+					<p class="text-sm font-bold text-brand-text">{MONTH_NAMES[viewMonth]} {viewYear}</p>
+					<p class="text-[10px] text-brand-text-muted font-semibold mt-0.5">{dayCount} Días Registrados</p>
+				</div>
+				<button type="button" class="p-2 hover:bg-brand-surface-elevated rounded-xl transition-colors" onclick={nextMonth} aria-label="Mes siguiente">
+					<ChevronRight class="w-4 h-4 text-brand-text-muted" />
 				</button>
 			</div>
 
-			{#if selectedStats}
-				<div class="rounded-xl border border-brand-divider bg-brand-bg px-4 py-3 mb-5">
-					<div class="flex items-center justify-between gap-2 mb-1">
-						<span class="text-sm font-semibold {healthTextClass(selectedStats.health)}">
-							{habitHealthLabel(selectedStats.health)}
-						</span>
-						<span class="text-sm font-bold {healthTextClass(selectedStats.health)}">
-							{selectedStats.pct}%
+			<div class="flex flex-row flex-nowrap gap-3 shrink-0 overflow-x-auto custom-scrollbar w-full md:w-auto pb-2 md:pb-0">
+				<div class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-2 flex items-center gap-3 shadow-inner h-fit shrink-0">
+					<div class="text-brand-bg font-bold bg-brand-accent rounded-md px-2 py-1 text-xs">
+						{monthProgress.pct}%
+					</div>
+					<div>
+						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Cumplimiento Global</p>
+						<p class="text-xs font-bold text-brand-text">{monthProgress.done} de {monthProgress.total} slots</p>
+					</div>
+				</div>
+				<div class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-2 flex items-center gap-3 shadow-inner h-fit shrink-0">
+					<div class="text-orange-500 bg-orange-500/10 border border-orange-500/20 rounded-md p-1.5">
+						<Flame class="w-4 h-4" />
+					</div>
+					<div>
+						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Días Perfectos</p>
+						<p class="text-xs font-bold text-brand-text">{perfectDays} días {perfectDays === 1 ? 'logrado' : 'logrados'}</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	</header>
+
+	<!-- Filters & Legend -->
+	<div class="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4 mt-8 px-1">
+		<div class="flex flex-wrap items-center gap-2">
+			{#each filters as filter}
+				<button 
+					type="button"
+					class="px-4 py-1.5 rounded-full text-xs font-bold transition-all border {currentFilter === filter ? 'bg-brand-accent text-brand-bg border-brand-accent shadow-[0_0_15px_var(--color-brand-accent-muted)]' : 'bg-[#0d1216] text-brand-text-muted border-brand-divider hover:bg-brand-surface-elevated hover:text-brand-text'}"
+					onclick={() => currentFilter = filter}
+				>
+					{filter} {filter === 'Todos' ? `(${habits.length})` : ''}
+				</button>
+			{/each}
+			<button 
+				type="button"
+				class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border bg-[#0d1216] text-brand-text-muted border-brand-divider hover:bg-brand-surface-elevated hover:text-brand-accent hover:border-brand-accent flex items-center gap-1 shadow-inner"
+				onclick={() => { formNewCategory = ''; categoryError = ''; sheetMode = 'manage-categories'; }}
+				title="Gestionar categorías"
+			>
+				<Plus class="w-3.5 h-3.5" />
+			</button>
+		</div>
+
+		<div class="flex flex-wrap items-center gap-4 text-[11px] font-semibold bg-brand-surface-elevated px-4 py-2 rounded-full border border-brand-divider w-fit">
+			<span class="text-brand-text-muted hidden sm:inline">Rendimiento:</span>
+			<span class="flex items-center gap-1.5 text-brand-text"><span class="w-2 h-2 rounded-full bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]"></span> ≥70% Óptimo</span>
+			<span class="flex items-center gap-1.5 text-brand-text"><span class="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_var(--color-amber-400)]"></span> 30–69% En progreso</span>
+			<span class="flex items-center gap-1.5 text-brand-text"><span class="w-2 h-2 rounded-full bg-red-400 shadow-[0_0_8px_var(--color-red-400)]"></span> &lt;30% Incompleto</span>
+		</div>
+	</div>
+
+	<!-- Matrix Table Container -->
+	{#if loading && habits.length === 0}
+		<div class="space-y-4 mt-4">
+			{#each [1, 2, 3, 4] as _}
+				<div class="h-20 rounded-2xl bg-brand-surface skeleton border border-brand-divider"></div>
+			{/each}
+		</div>
+	{:else if habits.length === 0}
+		<div class="flex flex-col items-center justify-center text-center px-6 py-20 bg-brand-surface border border-brand-divider rounded-3xl mt-4 shadow-sm">
+			<div class="w-16 h-16 rounded-3xl bg-brand-bg border border-brand-divider flex items-center justify-center mb-6 shadow-inner">
+				<RefreshCw class="w-8 h-8 text-brand-accent" />
+			</div>
+			<h2 class="text-xl font-bold text-brand-text mb-2">No hay hábitos configurados</h2>
+			<p class="text-brand-text-muted text-sm max-w-sm mb-8 leading-relaxed">
+				Empieza a construir una vida con propósito creando tu primer hábito y marcando cada día en la matriz del mes.
+			</p>
+			<button type="button" class="bg-brand-accent text-brand-bg font-bold px-6 py-3.5 rounded-xl transition-all hover:brightness-105 hover:scale-105 shadow-lg shadow-brand-accent/20 flex items-center gap-2" onclick={openCreate}>
+				<Plus class="w-5 h-5" /> Añadir mi primer hábito
+			</button>
+		</div>
+	{:else}
+		<div class="rounded-3xl border border-brand-divider bg-[#0d1216] overflow-hidden shadow-2xl relative mt-4">
+			<!-- Header Info Row -->
+			<div class="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-brand-divider bg-brand-surface gap-2">
+				<div class="flex items-center gap-2 text-brand-text-muted">
+					<Info class="w-4 h-4 shrink-0" />
+					<span class="text-[11px] font-medium leading-tight">Toca el icono para ver opciones del hábito o pulsa directamente cualquier día para registrarlo.</span>
+				</div>
+				<div class="flex items-center gap-2 shrink-0">
+					<span class="w-2 h-2 rounded-full bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]"></span>
+					<span class="text-[11px] font-bold text-brand-accent">Día actual: {new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'short' }).format(today)}</span>
+				</div>
+			</div>
+
+			<div class="overflow-x-auto custom-scrollbar">
+				<table class="w-full border-collapse min-w-max">
+					<thead>
+						<tr>
+							<th class="sticky left-0 z-20 bg-brand-surface border-b border-r border-brand-divider text-left py-4 px-3 md:px-6 w-[180px] md:w-80 font-bold text-[10px] text-brand-text-muted tracking-widest uppercase">
+								Hábito & Categoría
+							</th>
+							{#each dayNumbers as day (day)}
+								{@const dateStr = formatDayKey(viewYear, viewMonth, day)}
+								{@const weekday = weekdayForMonthDay(viewYear, viewMonth, day)}
+								{@const isToday = dateStr === todayKey}
+								<th class="py-3 px-1 border-b border-brand-divider text-center min-w-[34px] {isToday ? 'bg-brand-accent border-b-brand-accent' : 'bg-transparent'} transition-colors">
+									<div class="flex flex-col items-center justify-center gap-0.5">
+										<span class="text-[9px] font-bold uppercase {isToday ? 'text-brand-bg/80' : 'text-brand-text-muted/60'}">{WEEKDAY_LABELS[weekday]}</span>
+										<span class="text-sm font-black {isToday ? 'text-brand-bg' : 'text-brand-text'}">{day}</span>
+									</div>
+								</th>
+							{/each}
+							<th class="border-b border-brand-divider w-4"></th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-brand-divider/50">
+						{#each filteredHabits as habit (habit.id)}
+							{@const stats = habitStats.get(habit.id)}
+							{@const health = stats?.health ?? 'neutral'}
+							<tr class="group transition-colors hover:bg-brand-surface/30">
+								<th class="sticky left-0 z-10 bg-[#0d1216] border-r border-brand-divider p-0 align-middle w-[180px] md:w-80 group-hover:bg-[#12181d] transition-colors">
+									<div class="flex items-center gap-2 md:gap-4 py-3 px-3 md:px-6">
+										<!-- Left Icon -->
+										<button
+											type="button"
+											class="relative w-12 h-12 shrink-0 rounded-xl border bg-brand-surface flex items-center justify-center transition-all hover:scale-105 shadow-inner {habitHealthLabel(health) === 'Óptimo' ? 'border-brand-accent/30 text-brand-accent shadow-[0_0_15px_var(--color-brand-accent-muted)]' : 'border-brand-divider text-brand-text-muted'}"
+											onclick={() => openDetail(habit)}
+											title={habit.name}
+										>
+											<HabitIcon icon={habit.icon} class="w-5 h-5 {healthTextClass(health)}" />
+											<!-- Health indicator dot -->
+											<span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border-2 border-[#0d1216] {healthDotClass(health)}"></span>
+										</button>
+										
+										<!-- Habit Info -->
+										<div class="flex-1 min-w-0 flex flex-col items-start gap-1">
+											<span class="text-sm font-bold text-brand-text truncate w-full text-left leading-tight">
+												{habit.name}
+											</span>
+											<div class="flex items-center gap-2">
+												<span class="px-2 py-0.5 rounded-md bg-[#1a2228] border border-brand-divider text-[9px] font-bold text-brand-accent">
+													{habit.tag}
+												</span>
+												<span class="flex items-center gap-1 text-[10px] font-bold text-orange-500">
+													<Flame class="w-3 h-3" /> {stats?.streak ?? 0} d
+												</span>
+											</div>
+										</div>
+									</div>
+								</th>
+
+								{#each dayNumbers as day (day)}
+									{@const weekday = weekdayForMonthDay(viewYear, viewMonth, day)}
+									{@const scheduled = habitIsScheduledOn(habit, weekday)}
+									{@const dateStr = formatDayKey(viewYear, viewMonth, day)}
+									{@const key = logKey(habit.id, dateStr)}
+									{@const done = doneKeys.has(key)}
+									{@const isToday = dateStr === todayKey}
+									{@const isPast = dateStr < todayKey}
+									
+									<td class="p-1 align-middle text-center {isToday ? 'bg-brand-surface/80' : ''}">
+										{#if scheduled}
+											<button
+												type="button"
+												class="w-[28px] h-[28px] mx-auto rounded-[8px] flex items-center justify-center border transition-all active:scale-90 relative overflow-hidden
+												{done 
+													? 'bg-brand-accent border-brand-accent text-brand-bg shadow-[0_0_10px_var(--color-brand-accent-muted)]' 
+													: (isPast 
+														? 'bg-red-950/20 border-red-500/20 text-red-500 hover:border-red-500/50 hover:bg-red-900/30' 
+														: 'bg-brand-bg border-brand-divider/80 hover:border-brand-accent/50 hover:bg-brand-surface')}
+												"
+												aria-label="{habit.name}, día {day}: {done ? 'cumplido' : 'pendiente'}"
+												aria-pressed={done}
+												onclick={() => toggleCell(habit, day)}
+											>
+												{#if done}
+													<Check class="w-[18px] h-[18px]" strokeWidth={3.5} />
+												{:else if isPast}
+													<X class="w-[14px] h-[14px]" strokeWidth={3} />
+												{:else}
+													<span class="w-[4px] h-[4px] rounded-full bg-brand-text-muted/20"></span>
+												{/if}
+											</button>
+										{:else}
+											<div class="w-[28px] h-[28px] mx-auto flex items-center justify-center" aria-hidden="true">
+												<!-- Unscheduled day (empty dark block) -->
+												<div class="w-full h-full rounded-[8px] bg-brand-surface/20 border border-brand-divider/20"></div>
+											</div>
+										{/if}
+									</td>
+								{/each}
+								<td class="w-4"></td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+			
+			<!-- Table Footer Add Button -->
+			<div class="p-4 bg-brand-surface border-t border-brand-divider">
+				<button type="button" class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-brand-divider border-dashed bg-[#0d1216] text-brand-text-muted hover:text-brand-text hover:border-brand-accent hover:bg-brand-accent/5 transition-all font-semibold text-sm shadow-inner" onclick={openCreate}>
+					<Plus class="w-4 h-4" /> Añadir un nuevo hábito a la matriz
+				</button>
+			</div>
+		</div>
+	{/if}
+
+	<!-- Bottom Stats Widgets -->
+	{#if habits.length > 0}
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+			<!-- Widget 1: Hábito Más Fuerte -->
+			<div class="bg-brand-surface border border-brand-divider rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-lg h-48">
+				<div class="absolute -right-10 -top-10 w-40 h-40 bg-brand-accent/10 rounded-full blur-3xl"></div>
+				<div>
+					<div class="flex items-center justify-between mb-2">
+						<h3 class="text-[10px] font-bold text-brand-text-muted tracking-widest uppercase">Hábito más fuerte</h3>
+						<div class="w-8 h-8 rounded-lg bg-brand-bg border border-brand-divider flex items-center justify-center shadow-inner">
+							<TrendingUp class="w-4 h-4 text-brand-accent" />
+						</div>
+					</div>
+					<h4 class="text-xl font-bold text-brand-text leading-tight truncate">
+						{strongestHabit ? strongestHabit.habit.name : '—'}
+					</h4>
+				</div>
+				<div class="mt-4 flex items-end justify-between relative z-10">
+					<div>
+						<p class="text-4xl font-black text-brand-text tracking-tighter drop-shadow-sm">
+							{strongestHabit ? strongestHabit.stats.pct : 0}%
+						</p>
+						<p class="text-[10px] text-brand-text-muted mt-1 font-medium">Consistencia del mes</p>
+					</div>
+					<div class="text-right">
+						<p class="text-sm font-bold text-orange-400 flex items-center justify-end gap-1">
+							<Flame class="w-4 h-4" /> {strongestHabit ? strongestHabit.stats.streak : 0} días
+						</p>
+						<p class="text-[10px] font-semibold text-brand-accent mt-0.5">Racha ininterrumpida</p>
+					</div>
+				</div>
+			</div>
+
+			<!-- Widget 2: Pico de Disciplina -->
+			<div class="bg-brand-surface border border-brand-divider rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-lg h-48">
+				<div>
+					<div class="flex items-center justify-between mb-2">
+						<h3 class="text-[10px] font-bold text-brand-text-muted tracking-widest uppercase">Pico de disciplina</h3>
+						<div class="w-8 h-8 rounded-lg bg-brand-bg border border-brand-divider flex items-center justify-center shadow-inner">
+							<TrendingUp class="w-4 h-4 text-[#3b82f6]" />
+						</div>
+					</div>
+					<h4 class="text-xl font-bold text-brand-text leading-tight truncate">
+						{disciplinePeak ? disciplinePeak.days : '—'}
+					</h4>
+				</div>
+				<div class="mt-4 flex items-end justify-between">
+					<div>
+						<p class="text-4xl font-black text-brand-text tracking-tighter drop-shadow-sm">
+							{disciplinePeak ? disciplinePeak.pct : 0}%
+						</p>
+						<p class="text-[10px] text-brand-text-muted mt-1 font-medium">Tasa de éxito por día</p>
+					</div>
+					<div class="text-right">
+						<span class="inline-block px-3 py-1 bg-brand-surface-elevated border border-brand-divider rounded-md text-[10px] font-bold text-brand-accent">
+							{disciplinePeak ? 'Mejor rendimiento' : 'Sin datos'}
 						</span>
 					</div>
-					<p class="text-[11px] text-brand-text-muted">
-						{selectedStats.done} de {selectedStats.total} días programados en {MONTH_NAMES[viewMonth]}
-					</p>
-					<p class="text-[11px] text-brand-text-muted mt-1">
-						≥70% verde · 30–69% amarillo · &lt;30% rojo
+				</div>
+			</div>
+
+			<!-- Widget 3: Principio Fokuz -->
+			<div class="bg-brand-surface border border-brand-divider rounded-3xl p-6 relative overflow-hidden flex flex-col justify-between shadow-lg h-48">
+				<div>
+					<div class="flex items-center gap-2 mb-4">
+						<span class="w-2.5 h-2.5 rounded-full bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]"></span>
+						<h3 class="text-[10px] font-bold text-brand-accent tracking-widest uppercase">Principio Fokuz</h3>
+					</div>
+					<p class="text-sm font-bold text-brand-text italic leading-relaxed">
+						"{dailyQuote}"
 					</p>
 				</div>
-			{/if}
+				<div class="mt-4 pt-4 border-t border-brand-divider flex items-start justify-between gap-3">
+					<span class="text-[10px] text-brand-text-muted font-medium shrink-0 pt-0.5">Hábito(s) a cuidar:</span>
+					<span class="text-[11px] font-bold text-orange-400 text-right leading-tight line-clamp-2" title={weakestHabits.map(h => h.name).join(', ')}>
+						{weakestHabits.length > 0 ? weakestHabits.map(h => h.name).join(' & ') : '—'}
+					</span>
+				</div>
+			</div>
+		</div>
+	{/if}
+</div>
 
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Frecuencia</p>
-			<div class="flex flex-wrap gap-1.5 mb-6">
+<!-- Modal Bottom Sheet for Edit/Create -->
+{#if sheetMode !== 'closed'}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="fixed inset-0 bg-black/60 z-40 backdrop-blur-sm transition-opacity" onclick={closeSheet}></div>
+	<div
+		class="fixed bottom-0 left-0 right-0 md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-lg bg-brand-surface rounded-t-3xl md:rounded-3xl md:bottom-auto md:top-1/2 md:-translate-y-1/2 z-50 p-6 pt-4 shadow-2xl border border-brand-divider max-h-[90vh] overflow-y-auto"
+	>
+		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6 md:hidden"></div>
+
+		{#if sheetMode === 'detail' && selectedHabit}
+			<div class="flex justify-between items-start gap-3 mb-4">
+				<div class="flex items-start gap-4 min-w-0">
+					<span class="w-12 h-12 rounded-xl border border-brand-divider bg-[#0d1216] flex items-center justify-center shrink-0 shadow-inner">
+						<HabitIcon icon={selectedHabit.icon} class="w-5 h-5 text-brand-accent" />
+					</span>
+					<div class="min-w-0">
+						<p class="text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-1">Hábito</p>
+						<h3 class="text-xl font-bold text-brand-text break-words leading-tight">{selectedHabit.name}</h3>
+					</div>
+				</div>
+				<button type="button" class="p-2 bg-[#0d1216] rounded-xl text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors shrink-0" onclick={closeSheet}>
+					<X class="w-5 h-5" />
+				</button>
+			</div>
+
+			<p class="text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Frecuencia Planificada</p>
+			<div class="flex flex-wrap gap-2 mb-8">
 				{#each WEEKDAY_LABELS as label, day (day)}
 					<span
-						class="w-8 h-8 rounded-lg text-xs font-bold flex items-center justify-center {selectedHabit.weekdays.includes(
-							day
-						)
-							? 'bg-brand-accent text-brand-bg'
-							: 'bg-brand-bg text-brand-text-muted'}"
+						class="w-9 h-9 rounded-xl text-xs font-bold flex items-center justify-center transition-colors {selectedHabit.weekdays.includes(day) ? 'bg-brand-accent text-brand-bg shadow-[0_0_10px_var(--color-brand-accent-muted)]' : 'bg-[#0d1216] text-brand-text-muted border border-brand-divider'}"
 						title={WEEKDAY_NAMES[day]}
 					>
 						{label}
@@ -722,111 +1103,177 @@
 				{/each}
 			</div>
 
-			<div class="grid grid-cols-2 gap-2">
-				<button
-					type="button"
-					class="flex items-center justify-center gap-2 py-3.5 rounded-xl border border-brand-divider text-brand-text font-semibold hover:border-brand-accent hover:text-brand-accent transition-colors"
-					onclick={openEdit}
-				>
-					<Pencil class="w-4 h-4" />
-					Editar
+			<div class="grid grid-cols-2 gap-3">
+				<button type="button" class="flex items-center justify-center gap-2 py-3.5 rounded-xl bg-[#0d1216] border border-brand-divider text-brand-text font-bold hover:border-brand-accent hover:text-brand-accent transition-colors" onclick={openEdit}>
+					<Pencil class="w-4 h-4" /> Editar
 				</button>
+				<button type="button" class="flex items-center justify-center gap-2 py-3.5 rounded-xl border border-red-500/20 bg-red-900/10 text-red-500 font-bold hover:bg-red-500 hover:text-white transition-colors" onclick={() => (sheetMode = 'delete-confirm')}>
+					<Trash2 class="w-4 h-4" /> Eliminar
+				</button>
+			</div>
+		{:else if sheetMode === 'delete-confirm' && selectedHabit}
+			<div class="flex flex-col items-center justify-center text-center p-4 py-8">
+				<div class="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-6">
+					<Trash2 class="w-8 h-8 text-red-500" />
+				</div>
+				<h3 class="text-xl font-bold text-brand-text mb-2">¿Eliminar este hábito?</h3>
+				<p class="text-sm text-brand-text-muted mb-8 max-w-sm">
+					Estás a punto de eliminar <strong>"{selectedHabit.name}"</strong>. Esta acción borrará todo el historial de este hábito y no se puede deshacer.
+				</p>
+				<div class="flex flex-col sm:flex-row gap-3 w-full">
+					<button type="button" class="flex-1 bg-[#0d1216] text-brand-text border border-brand-divider font-bold py-3.5 rounded-xl hover:bg-brand-surface-elevated transition-colors" onclick={() => (sheetMode = 'detail')}>
+						Cancelar
+					</button>
+					<button type="button" class="flex-1 bg-red-500 text-white font-bold py-3.5 rounded-xl hover:bg-red-600 transition-colors shadow-lg shadow-red-500/20" onclick={deleteHabit}>
+						Sí, eliminar
+					</button>
+				</div>
+			</div>
+		{:else if sheetMode === 'manage-categories'}
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-xl font-bold text-brand-text">Gestionar Categorías</h3>
+				<button type="button" class="p-2 bg-[#0d1216] rounded-xl text-brand-text-muted hover:text-brand-text transition-colors" onclick={closeSheet}>
+					<X class="w-5 h-5" />
+				</button>
+			</div>
+			
+			<p class="text-[13px] text-brand-text-muted mb-6 leading-relaxed">
+				Tus categorías personalizadas. Si editas una categoría que está en uso, se actualizará en todos los hábitos correspondientes.
+			</p>
+
+			{#if categoryError}
+				<div class="bg-red-900/20 border border-red-500/30 rounded-xl p-3 mb-4">
+					<p class="text-xs text-red-400 font-medium">{categoryError}</p>
+				</div>
+			{/if}
+
+			{@const catsToShow = availableCategories.filter(c => c !== 'General')}
+			{#if catsToShow.length > 0}
+				<div class="flex flex-col gap-2 mb-6 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+					{#each catsToShow as cat (cat)}
+						{#if editingCategory?.old === cat}
+							<div class="flex items-center gap-2 bg-[#12181d] border border-brand-accent/50 rounded-xl p-2 shadow-inner">
+								<input
+									type="text"
+									bind:value={editingCategory.new}
+									class="flex-1 bg-transparent text-brand-text text-sm font-bold focus:outline-none px-2"
+									onkeydown={(e) => { if (e.key === 'Enter') saveEditCategory(); else if (e.key === 'Escape') editingCategory = null; }}
+									autofocus
+								/>
+								<button type="button" class="p-2 rounded-lg bg-brand-accent text-brand-bg font-bold hover:brightness-110 transition-colors" onclick={saveEditCategory}>
+									<Check class="w-4 h-4" />
+								</button>
+								<button type="button" class="p-2 rounded-lg bg-[#0d1216] border border-brand-divider text-brand-text-muted hover:text-brand-text transition-colors" onclick={() => (editingCategory = null)}>
+									<X class="w-4 h-4" />
+								</button>
+							</div>
+						{:else}
+							<div class="flex items-center justify-between bg-[#0d1216] border border-brand-divider rounded-xl pl-4 pr-2 py-2 shadow-inner group">
+								<span class="text-sm font-bold text-brand-text">{cat}</span>
+								<div class="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+									<button type="button" class="p-2 rounded-lg text-brand-text-muted hover:bg-brand-surface-elevated hover:text-brand-accent transition-colors" onclick={() => startEditCategory(cat)} aria-label="Editar categoría">
+										<Pencil class="w-3.5 h-3.5" />
+									</button>
+									<button type="button" class="p-2 rounded-lg text-brand-text-muted hover:bg-red-500/10 hover:text-red-500 transition-colors" onclick={() => removeCategory(cat)} aria-label="Eliminar categoría">
+										<Trash2 class="w-3.5 h-3.5" />
+									</button>
+								</div>
+							</div>
+						{/if}
+					{/each}
+				</div>
+			{:else}
+				<p class="text-xs text-brand-text-muted italic text-center mb-6 py-4 bg-[#0d1216] border border-brand-divider border-dashed rounded-xl">No hay categorías personalizadas aún.</p>
+			{/if}
+
+			<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2" for="cat-name">Nueva categoría</label>
+			<div class="flex gap-2 mb-2">
+				<input
+					id="cat-name" type="text" bind:value={formNewCategory} placeholder="Ej. Bienestar…"
+					class="flex-1 bg-[#0d1216] border border-brand-divider rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition-all"
+					onkeydown={(e) => { if (e.key === 'Enter') addCategory(); }}
+				/>
 				<button
 					type="button"
-					class="flex items-center justify-center gap-2 py-3.5 rounded-xl border border-red-400/40 text-red-400 font-semibold hover:bg-red-500/10 transition-colors"
-					onclick={deleteHabit}
+					class="bg-brand-accent hover:brightness-105 text-brand-bg font-bold px-6 rounded-xl flex items-center justify-center transition-all shadow-[0_0_15px_var(--color-brand-accent-muted)] shrink-0"
+					onclick={addCategory}
 				>
-					<Trash2 class="w-4 h-4" />
-					Eliminar
+					<Plus class="w-5 h-5" />
 				</button>
 			</div>
 		{:else}
-			<div class="flex justify-between items-center mb-6">
-				<h3 class="text-lg font-bold text-brand-text">
-					{sheetMode === 'edit' ? 'Editar hábito' : 'Crear hábito'}
+			<div class="flex justify-between items-center mb-8">
+				<h3 class="text-xl font-bold text-brand-text">
+					{sheetMode === 'edit' ? 'Editar hábito' : 'Crear nuevo hábito'}
 				</h3>
-				<button
-					type="button"
-					class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text transition-colors"
-					onclick={() => {
-						if (sheetMode === 'edit' && selectedHabit) sheetMode = 'detail';
-						else closeSheet();
-					}}
-					aria-label="Cerrar"
-				>
-					<X class="w-4 h-4" />
+				<button type="button" class="p-2 bg-[#0d1216] rounded-xl text-brand-text-muted hover:text-brand-text transition-colors" onclick={() => { if (sheetMode === 'edit' && selectedHabit) sheetMode = 'detail'; else closeSheet(); }}>
+					<X class="w-5 h-5" />
 				</button>
 			</div>
 
-			<label
-				class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2"
-				for="habit-name"
-			>
-				Nombre
-			</label>
+			<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2" for="habit-name">Nombre del hábito</label>
 			<input
-				id="habit-name"
-				type="text"
-				bind:value={formName}
-				placeholder="Ej. Meditar, Leer, Ejercicio…"
-				class="w-full bg-brand-bg rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:ring-2 focus:ring-brand-accent/30 mb-5"
+				id="habit-name" type="text" bind:value={formName} placeholder="Ej. Meditar, Leer, Ejercicio…"
+				class="w-full bg-[#0d1216] border border-brand-divider rounded-xl p-4 text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent mb-4 transition-all"
 			/>
 
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Icono</p>
-			<div class="grid grid-cols-5 gap-2 mb-5">
+			<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2" for="habit-tag">Categoría (Etiqueta)</label>
+			<div class="relative mb-6">
+				<select
+					id="habit-tag" bind:value={formTag}
+					class="w-full bg-[#0d1216] border border-brand-divider rounded-xl p-4 text-brand-text focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition-all appearance-none cursor-pointer"
+				>
+					{#each availableCategories as cat}
+						<option value={cat}>{cat}</option>
+					{/each}
+				</select>
+				<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-brand-text-muted">
+					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+				</div>
+			</div>
+
+			<p class="text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Icono</p>
+			<div class="grid grid-cols-5 gap-3 mb-6">
 				{#each HABIT_ICON_OPTIONS as opt (opt.id)}
 					<button
 						type="button"
-						class="aspect-square rounded-xl flex items-center justify-center border transition-colors {formIcon ===
-						opt.id
-							? 'border-brand-accent bg-brand-accent text-brand-bg'
-							: 'border-brand-divider bg-brand-bg text-brand-text-muted'}"
-						title={opt.label}
-						aria-label={opt.label}
-						aria-pressed={formIcon === opt.id}
-						onclick={() => (formIcon = opt.id)}
+						class="aspect-square rounded-xl flex items-center justify-center border transition-colors {formIcon === opt.id ? 'border-brand-accent bg-brand-accent/10 text-brand-accent shadow-[0_0_10px_var(--color-brand-accent-muted)]' : 'border-brand-divider bg-[#0d1216] text-brand-text-muted hover:bg-brand-surface-elevated'}"
+						title={opt.label} aria-label={opt.label} aria-pressed={formIcon === opt.id} onclick={() => (formIcon = opt.id)}
 					>
-						<HabitIcon icon={opt.id} class="w-5 h-5" />
+						<HabitIcon icon={opt.id} class="w-6 h-6" />
 					</button>
 				{/each}
 			</div>
 
-			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Frecuencia</p>
+			<p class="text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Frecuencia Semanal</p>
 			<div class="grid grid-cols-7 gap-2 mb-2">
 				{#each WEEKDAY_LABELS as label, day (day)}
 					<button
 						type="button"
-						class="aspect-square rounded-xl text-sm font-bold transition-colors {formWeekdays.includes(day)
-							? 'bg-brand-accent text-brand-bg'
-							: 'bg-brand-bg text-brand-text-muted'}"
-						title={WEEKDAY_NAMES[day]}
-						aria-pressed={formWeekdays.includes(day)}
-						onclick={() => toggleWeekday(day)}
+						class="aspect-square rounded-xl text-sm font-bold transition-all border {formWeekdays.includes(day) ? 'bg-brand-accent text-brand-bg border-brand-accent shadow-[0_0_10px_var(--color-brand-accent-muted)]' : 'bg-[#0d1216] text-brand-text-muted border-brand-divider hover:bg-brand-surface-elevated'}"
+						title={WEEKDAY_NAMES[day]} aria-pressed={formWeekdays.includes(day)} onclick={() => toggleWeekday(day)}
 					>
 						{label}
 					</button>
 				{/each}
 			</div>
-			<p class="text-[11px] text-brand-text-muted mb-5">
-				Selecciona los días en que debes cumplir este hábito.
-			</p>
+			<p class="text-[10px] text-brand-text-muted mb-6">Selecciona los días en que debes cumplir este hábito.</p>
 
 			{#if formError}
-				<p class="text-sm text-red-400 mb-3">{formError}</p>
+				<div class="bg-red-900/20 border border-red-500/30 rounded-xl p-3 mb-6">
+					<p class="text-xs text-red-400 font-medium">{formError}</p>
+				</div>
 			{/if}
 
 			<button
 				type="button"
-				class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-				onclick={() => (sheetMode === 'edit' ? saveEdit() : createHabit())}
-				disabled={formBusy}
+				class="w-full bg-brand-accent hover:brightness-105 text-brand-bg font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-60 disabled:hover:scale-100 shadow-[0_0_15px_var(--color-brand-accent-muted)]"
+				onclick={() => (sheetMode === 'edit' ? saveEdit() : createHabit())} disabled={formBusy}
 			>
 				{#if sheetMode === 'edit'}
-					<Pencil class="w-5 h-5" />
-					Guardar cambios
+					<Pencil class="w-5 h-5" /> Guardar cambios
 				{:else}
-					<Plus class="w-5 h-5" />
-					Crear hábito
+					<Plus class="w-5 h-5" /> Crear hábito
 				{/if}
 			</button>
 		{/if}
