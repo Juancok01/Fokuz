@@ -1,6 +1,6 @@
 <script lang="ts">
 	import './layout.css';
-	import favicon from '$lib/assets/favicon_logo.png';
+	import favicon from '$lib/assets/Logo_Fokuz.png';
 	import { supabase } from '$lib/supabaseClient';
 	import { onMount } from 'svelte';
 	import type { Session } from '@supabase/supabase-js';
@@ -41,7 +41,7 @@
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 </svelte:head>
 
-<main class="max-w-md mx-auto min-h-screen bg-brand-bg relative shadow-2xl overflow-hidden flex flex-col">
+<main class="w-full mx-auto min-h-screen bg-brand-bg relative overflow-hidden flex flex-col">
 	{#if loading}
 		<div class="flex-1 flex flex-col items-center justify-center h-full gap-4 px-8">
 			<img src={favicon} alt="Fokuz" class="w-14 h-14 rounded-2xl logo-pulse" />

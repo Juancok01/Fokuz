@@ -24,6 +24,7 @@ export type Habit = {
 	name: string;
 	weekdays: number[];
 	icon: HabitIconId;
+	tag?: string;
 };
 
 export type HabitHealth = 'green' | 'yellow' | 'red' | 'neutral';

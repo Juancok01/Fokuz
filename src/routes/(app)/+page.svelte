@@ -1,9 +1,22 @@
 <script lang="ts">
-	import { BookOpen, Calendar, Check, Circle, ListChecks, RefreshCw } from 'lucide-svelte';
+	import {
+		BookOpen,
+		Calendar,
+		Check,
+		Circle,
+		ListChecks,
+		RefreshCw,
+		Flame,
+		Zap,
+		Target,
+		Share2,
+		Bookmark,
+		Play
+	} from 'lucide-svelte';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
-	import logo from '$lib/assets/favicon_logo.png';
+	import logo from '$lib/assets/Logo_Fokuz.png';
 	import HabitIcon from '$lib/components/HabitIcon.svelte';
 	import {
 		getLocalDailyVerse,
@@ -20,7 +33,7 @@
 		type Habit
 	} from '$lib/habits';
 
-	type TodayHabit = Habit & { done: boolean };
+	type TodayHabit = Habit & { done: boolean; streak: number; tag: string };
 
 	let userName = $state('tú');
 	let pendingCount = $state(0);
@@ -73,10 +86,10 @@
 	const habitsDone = $derived(todayHabits.filter((h) => h.done).length);
 
 	const statusMessage = $derived.by(() => {
-		if (totalCount === 0) return 'No tienes tareas para hoy. ¡Buen momento para planear!';
-		if (pendingCount === 0) return 'Completaste todas tus tareas de hoy. ¡Excelente!';
+		if (totalCount === 0) return 'No tienes tareas pendientes para hoy. ¡Es un excelente momento para planificar tu día de mañana!';
+		if (pendingCount === 0) return 'Completaste todas tus tareas de hoy. ¡Es un excelente momento para descansar o planificar tu día de mañana!';
 		if (pendingCount === 1) return 'Tienes 1 tarea pendiente para hoy. ¡Vamos por ella!';
-		return `Tienes ${pendingCount} tareas pendientes para hoy. ¡Vamos por ellas!`;
+		return `Tienes ${pendingCount} tareas pendientes para hoy. ¡Aún estás a tiempo!`;
 	});
 
 	const resolveDisplayName = (meta: Record<string, unknown>, email?: string | null) => {
@@ -132,7 +145,6 @@
 			const today = formatDateInTz();
 			const weekday = getWeekdayInTz();
 
-			// getSession es local; tareas + hábitos en paralelo
 			const [
 				{
 					data: { session }
@@ -171,7 +183,6 @@
 			}
 
 			if (habitsResult.error) {
-				// Tabla aún no creada u otro error: no romper Inicio
 				if (!/habit/i.test(habitsResult.error.message)) {
 					console.warn('Error al cargar hábitos:', habitsResult.error.message);
 				}
@@ -179,13 +190,20 @@
 			} else {
 				const doneIds = new Set((logsResult.data ?? []).map((row) => row.habit_id));
 				todayHabits = (habitsResult.data ?? [])
-					.map((h) => ({
-						id: h.id,
-						name: h.name,
-						weekdays: normalizeWeekdays(h.weekdays),
-						icon: normalizeHabitIcon((h as { icon?: string }).icon),
-						done: doneIds.has(h.id)
-					}))
+					.map((h, i) => {
+						const mockTags = ['Vitalidad', 'Espiritual', 'Planificación', 'Desarrollo'];
+						const tag = mockTags[i % mockTags.length];
+						const streak = Math.floor(Math.random() * 30) + 1;
+						return {
+							id: h.id,
+							name: h.name,
+							weekdays: normalizeWeekdays(h.weekdays),
+							icon: normalizeHabitIcon((h as { icon?: string }).icon),
+							done: doneIds.has(h.id),
+							streak,
+							tag
+						};
+					})
 					.filter((h) => habitIsScheduledOn(h, weekday));
 			}
 		} catch (err) {
@@ -241,7 +259,6 @@
 	});
 
 	afterNavigate(({ from }) => {
-		// Refresco en segundo plano al volver (sin skeleton)
 		if (from) {
 			loadTodaySummary({ silent: true });
 			loadDailyVerse({ silent: true });
@@ -253,152 +270,262 @@
 	<title>Inicio · Fokuz</title>
 </svelte:head>
 
-<header class="flex items-center justify-between p-6 bg-brand-surface pb-4 rounded-b-3xl z-10 sticky top-0 border-b border-brand-divider">
-	<div class="flex items-center gap-2 text-brand-accent">
-		<Calendar class="w-5 h-5" />
-		<span class="text-base font-bold">{todayLabel}</span>
-	</div>
-	<img src={logo} alt="Fokuz" class="w-9 h-9 rounded-full object-contain ring-2 ring-brand-accent/70" />
-</header>
-
-<div class="flex-1 overflow-y-auto px-6 py-6 pb-28">
-	<div class="rounded-2xl border border-brand-accent/70 bg-brand-surface p-5">
-		{#if loading}
-			<div class="space-y-4">
-				<div class="h-8 w-[75%] rounded-lg bg-brand-surface-elevated skeleton"></div>
-				<div class="h-4 w-full rounded bg-brand-surface-elevated skeleton"></div>
-				<div class="h-4 w-[66%] rounded bg-brand-surface-elevated skeleton"></div>
-				<div class="h-2 w-full rounded-full bg-brand-surface-elevated skeleton mt-2"></div>
+<div class="flex-1 overflow-y-auto px-6 py-6 pb-28 md:px-10 lg:px-12 xl:px-16 w-full max-w-7xl mx-auto">
+	<!-- Top Header (Date, Week) -->
+	<header class="flex flex-col md:flex-row md:items-center justify-between mb-8 pb-4 border-b border-brand-divider gap-4">
+		<div class="flex items-center gap-4">
+			<div class="bg-brand-surface border border-brand-divider p-2.5 rounded-xl">
+				<Calendar class="w-6 h-6 text-brand-accent" />
 			</div>
-		{:else}
-			<h2 class="text-2xl font-bold text-brand-accent tracking-tight mb-2">
-				{greeting}, {userName}
-			</h2>
-			<p class="text-brand-text-muted text-[15px] leading-relaxed mb-5">
-				{statusMessage}
-			</p>
-
-			<div class="flex items-center gap-3 mb-4">
-				<div class="flex items-center gap-2 text-brand-text text-sm">
-					<ListChecks class="w-4 h-4 text-brand-accent" />
-					<span>
-						<span class="font-bold text-brand-accent">{pendingCount}</span>
-						pendiente{pendingCount === 1 ? '' : 's'}
-					</span>
+			<div>
+				<div class="flex items-center gap-2">
+					<h2 class="text-xl font-bold text-brand-text">{todayLabel}</h2>
+					<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-surface-elevated text-brand-accent">Semana 37</span>
 				</div>
-				<span class="text-brand-divider">·</span>
-				<span class="text-sm text-brand-text-muted">
-					{completedCount} completada{completedCount === 1 ? '' : 's'}
-				</span>
+				<p class="text-xs text-brand-text-muted mt-1">Objetivos diarios sincronizados</p>
 			</div>
+		</div>
+		<!-- Mock Week Selector -->
+		<div class="hidden lg:flex items-center gap-1 text-xs font-medium bg-brand-surface rounded-full p-1 border border-brand-divider">
+			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Vie 11</span>
+			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Sáb 12</span>
+			<span class="px-4 py-2 bg-brand-accent text-brand-bg rounded-full font-bold cursor-pointer">Dom 13</span>
+			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Lun 14</span>
+			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Mar 15</span>
+		</div>
+	</header>
 
-			<div class="flex items-center gap-3">
-				<div class="h-2 flex-1 bg-brand-surface-elevated rounded-full overflow-hidden">
-					<div
-						class="h-full bg-brand-accent rounded-full transition-[width] duration-500 ease-out"
-						style="width: {progress}%"
-					></div>
+	<!-- Main Grid -->
+	<div class="grid grid-cols-1 lg:grid-cols-[1fr_320px] xl:grid-cols-[1fr_380px] gap-8">
+		
+		<!-- Left Column -->
+		<div class="flex flex-col gap-6">
+			
+			<!-- Greeting Card -->
+			<div class="relative rounded-2xl border border-brand-divider bg-brand-surface p-6 overflow-hidden shadow-lg">
+				<!-- Glow effects -->
+				<div class="absolute -top-24 -left-24 w-64 h-64 bg-brand-accent/15 rounded-full blur-3xl pointer-events-none"></div>
+				
+				<div class="flex flex-col md:flex-row md:items-start justify-between gap-6 relative z-10">
+					<div class="flex-1">
+						<div class="flex items-center gap-2 mb-4">
+							<div class="w-2 h-2 rounded-full bg-brand-accent logo-pulse"></div>
+							<span class="text-[11px] text-brand-text-muted uppercase tracking-wider font-semibold">Modo enfoque nocturno</span>
+						</div>
+						<h2 class="text-4xl font-bold tracking-tight text-brand-text mb-2">
+							{greeting}, <span class="text-brand-accent">{userName}</span>
+						</h2>
+						<p class="text-brand-text-muted text-[15px] leading-relaxed max-w-md mb-8">
+							{statusMessage}
+						</p>
+
+						<div class="flex items-center gap-4 text-xs font-medium mb-3">
+							<div class="flex items-center gap-1.5">
+								<span class="w-2 h-2 rounded-full bg-brand-accent"></span>
+								<span class="text-brand-text"><span class="font-bold">{pendingCount}</span> pendientes</span>
+							</div>
+							<span class="text-brand-divider">·</span>
+							<div class="flex items-center gap-1.5">
+								<span class="w-2 h-2 rounded-full bg-brand-accent opacity-50"></span>
+								<span class="text-brand-text"><span class="font-bold">{completedCount}</span> completadas</span>
+							</div>
+							<span class="text-brand-divider">·</span>
+							<span class="text-brand-text-muted">Total {totalCount} hábitos para hoy</span>
+						</div>
+						
+						<div class="flex items-center gap-3">
+							<div class="h-1.5 flex-1 bg-brand-bg rounded-full overflow-hidden">
+								<div class="h-full bg-brand-accent rounded-full transition-[width] duration-500 ease-out shadow-[0_0_10px_var(--color-brand-accent)]" style="width: {progress}%"></div>
+							</div>
+							<span class="text-xs font-bold text-brand-accent whitespace-nowrap">{progress}% Completado</span>
+						</div>
+					</div>
+
+					<div class="flex gap-3 shrink-0">
+						<div class="bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 flex items-center gap-3">
+							<Flame class="w-5 h-5 text-orange-500" />
+							<div>
+								<p class="text-[10px] text-brand-text-muted uppercase tracking-wide">Racha activa</p>
+								<p class="text-sm font-bold text-brand-text">7 días seguidos</p>
+							</div>
+						</div>
+						<div class="bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 flex items-center gap-3">
+							<Zap class="w-5 h-5 text-brand-accent" />
+							<div>
+								<p class="text-[10px] text-brand-text-muted uppercase tracking-wide">Enfoque</p>
+								<p class="text-sm font-bold text-brand-accent">Óptimo</p>
+							</div>
+						</div>
+					</div>
 				</div>
-				<span class="text-sm font-bold text-brand-accent whitespace-nowrap">{progress}% Completado</span>
+
+				<div class="mt-8 flex flex-col sm:flex-row gap-3 relative z-10">
+					<a href="/tareas" class="flex-1 flex items-center justify-center gap-2 bg-brand-accent text-brand-bg font-bold py-3.5 rounded-xl hover:brightness-105 transition-colors shadow-[0_0_20px_var(--color-brand-accent-muted)]">
+						<ListChecks class="w-5 h-5" />
+						Ver tareas de hoy
+					</a>
+					<button class="flex-[0.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3.5 rounded-xl hover:bg-brand-bg transition-colors">
+						<span class="text-brand-text-muted">+</span> Planificar día siguiente
+					</button>
+				</div>
 			</div>
-		{/if}
-	</div>
 
-	<a
-		href="/tareas"
-		class="mt-6 w-full flex items-center justify-center gap-2 bg-brand-accent text-brand-bg font-bold py-4 rounded-xl hover:brightness-105 transition-colors"
-	>
-		Ver tareas de hoy
-	</a>
+			<!-- Hábitos Section -->
+			<section>
+				<div class="flex items-center justify-between mb-4 mt-2">
+					<div class="flex items-center gap-2">
+						<RefreshCw class="w-4 h-4 text-brand-accent" />
+						<h3 class="text-sm font-bold text-brand-text uppercase tracking-wider">Hábitos de hoy</h3>
+					</div>
+					<div class="flex items-center gap-3">
+						{#if !loading && todayHabits.length > 0}
+							<span class="text-xs font-medium text-brand-text"><span class="font-bold text-brand-text">{habitsDone}</span> de {todayHabits.length} listos</span>
+						{/if}
+						<a href="/habitos" class="text-xs font-bold text-brand-accent hover:underline">Gestionar</a>
+					</div>
+				</div>
 
-	<!-- Versículo del día -->
-	<section class="mt-8">
-		<div class="flex items-center gap-2 mb-3">
-			<BookOpen class="w-4 h-4 text-brand-accent" />
-			<h3 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">
-				Versículo del día
-			</h3>
+				{#if loading}
+					<div class="space-y-3">
+						{#each [1, 2, 3] as _}
+							<div class="h-20 rounded-xl bg-brand-surface skeleton"></div>
+						{/each}
+					</div>
+				{:else if todayHabits.length === 0}
+					<div class="rounded-xl border border-brand-divider bg-brand-surface px-6 py-8 text-center">
+						<p class="text-brand-text-muted mb-4">No tienes hábitos programados para hoy.</p>
+						<a href="/habitos" class="text-sm font-bold text-brand-bg bg-brand-accent px-4 py-2 rounded-lg hover:brightness-105 transition-colors">Añadir Hábitos</a>
+					</div>
+				{:else}
+					<ul class="space-y-3">
+						{#each todayHabits as habit (habit.id)}
+							<li>
+								<button
+									type="button"
+									class="w-full group flex items-center gap-4 rounded-2xl border border-brand-divider bg-brand-surface px-5 py-4 text-left transition-all hover:border-brand-accent/50 hover:bg-brand-surface-elevated"
+									onclick={() => toggleTodayHabit(habit)}
+								>
+									<div class="relative shrink-0 flex items-center justify-center w-6 h-6 rounded-full border-2 {habit.done ? 'border-brand-accent bg-brand-accent' : 'border-brand-divider group-hover:border-brand-text-muted'} transition-colors">
+										{#if habit.done}
+											<Check class="w-3.5 h-3.5 text-brand-bg absolute" strokeWidth={3} />
+										{/if}
+									</div>
+
+									<div class="shrink-0 w-10 h-10 rounded-xl bg-brand-bg border border-brand-divider flex items-center justify-center text-brand-accent shadow-inner">
+										<HabitIcon icon={habit.icon} class="w-5 h-5" />
+									</div>
+									
+									<div class="flex-1 min-w-0">
+										<span class="block text-[15px] font-bold truncate {habit.done ? 'text-brand-text-muted line-through' : 'text-brand-text'}">
+											{habit.name}
+										</span>
+										<div class="flex items-center gap-2 mt-0.5 text-[11px] font-medium text-brand-text-muted">
+											<span>Cualquier momento</span>
+											<span class="text-brand-divider">·</span>
+											<span class="flex items-center gap-1 text-orange-400">
+												<Flame class="w-3 h-3" /> Racha: {habit.streak} días
+											</span>
+										</div>
+									</div>
+
+									<div class="shrink-0 hidden sm:block">
+										<span class="px-3 py-1.5 rounded-lg bg-brand-bg border border-brand-divider text-[10px] font-bold text-brand-text-muted">
+											{habit.tag}
+										</span>
+									</div>
+								</button>
+							</li>
+						{/each}
+					</ul>
+					{#if habitsPending > 0}
+						<p class="mt-4 text-[11px] text-brand-text-muted flex items-center gap-1.5">
+							<span class="text-brand-accent text-sm">💡</span> Consejo: {habitsPending} por marcar · Toca cada círculo para completar y mantener viva tu racha.
+						</p>
+					{/if}
+				{/if}
+			</section>
+
+			<!-- Prioridades Banner -->
+			<div class="mt-2 rounded-2xl border border-brand-divider bg-brand-surface p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+				<div class="flex items-center gap-4">
+					<div class="w-10 h-10 shrink-0 rounded-full bg-brand-bg border border-brand-divider flex items-center justify-center">
+						<Target class="w-5 h-5 text-pink-500" />
+					</div>
+					<div>
+						<h4 class="font-bold text-brand-text text-[13px]">¿Listo para definir prioridades para mañana?</h4>
+						<p class="text-[11px] text-brand-text-muted mt-0.5">Deja tu mente libre antes de dormir redactando las 3 metas clave.</p>
+					</div>
+				</div>
+				<a href="/tareas" class="shrink-0 text-center px-4 py-2 border border-brand-divider bg-[#0d1216] hover:bg-brand-surface-elevated text-brand-text text-[11px] font-bold rounded-lg transition-colors">
+					Añadir metas
+				</a>
+			</div>
 		</div>
 
-		{#if verseLoading && !dailyVerse}
-			<div class="rounded-xl border border-brand-divider bg-brand-surface p-4 space-y-3">
-				<div class="h-4 w-full rounded bg-brand-surface-elevated skeleton"></div>
-				<div class="h-4 w-[85%] rounded bg-brand-surface-elevated skeleton"></div>
-				<div class="h-3 w-28 rounded bg-brand-surface-elevated skeleton"></div>
-			</div>
-		{:else if dailyVerse}
-			<blockquote class="rounded-xl border border-brand-divider bg-brand-surface p-4">
-				<p class="text-[15px] leading-relaxed text-brand-text italic">
-					“{dailyVerse.text}”
-				</p>
-				<footer class="mt-3 flex items-center justify-between gap-2">
-					<cite class="not-italic text-sm font-semibold text-brand-accent">
-						{dailyVerse.reference}
-					</cite>
-					<span class="text-[11px] text-brand-text-muted shrink-0">
-						{dailyVerse.translation}
-					</span>
-				</footer>
-			</blockquote>
-		{/if}
-	</section>
+		<!-- Right Column -->
+		<div class="flex flex-col gap-6">
+			<!-- Versículo del día -->
+			<section class="rounded-2xl border border-[#0B624C] bg-brand-surface overflow-hidden relative shadow-lg">
+				<div class="absolute inset-0 bg-brand-accent/5 pointer-events-none"></div>
+				<div class="p-6 relative z-10">
+					<div class="flex items-center justify-between mb-6">
+						<div class="flex items-center gap-2">
+							<BookOpen class="w-4 h-4 text-brand-accent" />
+							<h3 class="text-xs font-bold text-brand-text tracking-wider uppercase">Versículo del día</h3>
+						</div>
+						<div class="flex items-center gap-3 text-brand-text-muted">
+							<button class="hover:text-brand-text transition-colors"><Bookmark class="w-4 h-4" /></button>
+							<button class="hover:text-brand-text transition-colors"><Share2 class="w-4 h-4" /></button>
+						</div>
+					</div>
 
-	<!-- F-IN-03: hábitos de hoy -->
-	<section class="mt-8">
-		<div class="flex items-center justify-between mb-3">
-			<div class="flex items-center gap-2">
-				<RefreshCw class="w-4 h-4 text-brand-accent" />
-				<h3 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Hábitos de hoy</h3>
-			</div>
-			{#if !loading && todayHabits.length > 0}
-				<span class="text-[11px] text-brand-text-muted">{habitsDone}/{todayHabits.length}</span>
-			{/if}
+					{#if verseLoading && !dailyVerse}
+						<div class="space-y-3">
+							<div class="h-4 w-full rounded bg-brand-bg skeleton"></div>
+							<div class="h-4 w-[85%] rounded bg-brand-bg skeleton"></div>
+							<div class="h-3 w-28 rounded bg-brand-bg skeleton"></div>
+						</div>
+					{:else if dailyVerse}
+						<blockquote class="space-y-5">
+							<p class="text-[17px] leading-relaxed text-brand-text italic font-serif">
+								<span class="text-brand-accent font-serif text-2xl mr-1 leading-none">“</span>{dailyVerse.text}<span class="text-brand-accent font-serif text-2xl ml-1 leading-none">”</span>
+							</p>
+							<footer class="flex items-center justify-between gap-2 pt-2">
+								<cite class="not-italic text-sm font-bold text-brand-accent">
+									{dailyVerse.reference}
+								</cite>
+								<span class="text-[9px] font-bold px-2 py-1 bg-brand-bg/50 border border-brand-divider rounded-md text-brand-accent shrink-0 uppercase tracking-widest">
+									{dailyVerse.translation}
+								</span>
+							</footer>
+						</blockquote>
+					{/if}
+				</div>
+			</section>
+
+			<!-- Foco & Reflexión (Pomodoro) -->
+			<section class="rounded-2xl border border-brand-divider bg-brand-surface p-6 text-center flex flex-col items-center justify-center relative shadow-lg">
+				<div class="absolute inset-0 bg-gradient-to-b from-transparent to-brand-bg/20 rounded-2xl pointer-events-none"></div>
+				<div class="w-full flex items-center justify-between mb-8 relative z-10">
+					<div class="flex items-center gap-2">
+						<img src={logo} alt="" class="w-5 h-5 rounded-md object-contain" />
+						<h3 class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Foco & Reflexión</h3>
+					</div>
+					<span class="text-[10px] font-bold text-brand-accent bg-brand-accent/10 px-2 py-1 rounded-md">Pomodoro</span>
+				</div>
+				
+				<h4 class="text-5xl font-black text-brand-text mb-2 tabular-nums tracking-tighter drop-shadow-md relative z-10">25:00</h4>
+				<p class="text-[11px] text-brand-text-muted mb-8 relative z-10">Tiempo de lectura o introspección</p>
+				
+				<div class="w-full flex gap-3 relative z-10">
+					<a href="/pomodoro" class="flex-[1.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3 rounded-xl hover:bg-brand-surface-elevated transition-colors">
+						<Play class="w-4 h-4 fill-brand-text" /> Iniciar
+					</a>
+					<a href="/pomodoro" class="flex-1 flex items-center justify-center gap-2 bg-transparent border border-brand-divider text-brand-text-muted font-bold py-3 rounded-xl hover:text-brand-text hover:bg-brand-surface-elevated transition-colors">
+						Ajustar
+					</a>
+				</div>
+			</section>
 		</div>
-
-		{#if loading}
-			<div class="space-y-2">
-				{#each [1, 2] as _}
-					<div class="h-12 rounded-xl bg-brand-surface skeleton"></div>
-				{/each}
-			</div>
-		{:else if todayHabits.length === 0}
-			<div class="rounded-xl border border-brand-divider bg-brand-surface px-4 py-4">
-				<p class="text-sm text-brand-text-muted mb-3">No tienes hábitos programados para hoy.</p>
-				<a href="/habitos" class="text-sm font-semibold text-brand-accent hover:underline">Ir a Hábitos</a>
-			</div>
-		{:else}
-			<ul class="space-y-2">
-				{#each todayHabits as habit (habit.id)}
-					<li>
-						<button
-							type="button"
-							class="w-full flex items-center gap-3 rounded-xl border border-brand-divider bg-brand-surface px-4 py-3 text-left transition-colors hover:bg-brand-surface-elevated"
-							onclick={() => toggleTodayHabit(habit)}
-						>
-							{#if habit.done}
-								<Check class="w-5 h-5 text-brand-accent shrink-0" />
-							{:else}
-								<Circle class="w-5 h-5 text-brand-text-muted shrink-0" />
-							{/if}
-							<span class="text-brand-accent shrink-0">
-								<HabitIcon icon={habit.icon} class="w-4 h-4" />
-							</span>
-							<span
-								class="text-sm font-medium truncate {habit.done
-									? 'text-brand-text-muted line-through'
-									: 'text-brand-text'}"
-							>
-								{habit.name}
-							</span>
-						</button>
-					</li>
-				{/each}
-			</ul>
-			{#if habitsPending > 0}
-				<p class="mt-2 text-[11px] text-brand-text-muted">
-					{habitsPending} por marcar · toca para completar
-				</p>
-			{/if}
-		{/if}
-	</section>
+	</div>
 </div>
