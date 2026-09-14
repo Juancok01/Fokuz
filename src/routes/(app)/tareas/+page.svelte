@@ -1424,8 +1424,8 @@
 					<div 
 						class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 bg-brand-surface/30"
 						use:dndzone={{items: boardItems[col.id] || [], flipDurationMs: 200, dropTargetStyle: {}}}
-						on:consider={(e) => handleDndConsiderCards(e, col.id)}
-						on:finalize={(e) => handleDndFinalizeCards(e, col.id)}
+						onconsider={(e) => handleDndConsiderCards(e, col.id)}
+						onfinalize={(e) => handleDndFinalizeCards(e, col.id)}
 					>
 						{#each (boardItems[col.id] || []) as task (task.id)}
 							<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-4 shadow-sm hover:border-brand-accent/50 transition-colors group cursor-grab active:cursor-grabbing relative overflow-hidden">
