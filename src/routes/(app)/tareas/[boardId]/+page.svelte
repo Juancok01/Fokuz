@@ -123,6 +123,8 @@
 	let showEditListModal = $state(false);
 	let editListName = $state('');
 	let newListItemTitle = $state('');
+	let editListItemId = $state<number | null>(null);
+	let editListItemTitle = $state('');
 	let newTaskTitle = $state('');
 	let newTaskStartDate = $state(new Date().toISOString().split('T')[0]);
 	let newTaskEndDate = $state('');
@@ -165,6 +167,8 @@
 	let newListName = $state('');
 	let draftListItems = $state<string[]>([]);
 	let newDraftItem = $state('');
+	let editChecklistId = $state<number | null>(null);
+	let editChecklistName = $state('');
 	let listsLoading = $state(false);
 	let listDetailLoading = $state(false);
 	let listaError = $state('');
@@ -1151,6 +1155,52 @@
 		showEditListModal = false;
 		showVerListasModal = true;
 		await loadTaskLists(selectedTaskId);
+	};
+
+	const startEditChecklist = (list: TaskList) => {
+		editChecklistId = list.id;
+		editChecklistName = list.name;
+	};
+
+	const cancelEditChecklist = () => {
+		editChecklistId = null;
+		editChecklistName = '';
+	};
+
+	const saveEditChecklist = async () => {
+		if (!editChecklistId || !editChecklistName.trim() || !supabase) return;
+		const id = editChecklistId;
+		const newName = editChecklistName.trim();
+		const { error } = await supabase.from('task_lists').update({ name: newName }).eq('id', id);
+		if (error) {
+			alert('Error al actualizar checklist: ' + error.message);
+			return;
+		}
+		taskLists = taskLists.map((list) => (list.id === id ? { ...list, name: newName } : list));
+		cancelEditChecklist();
+	};
+
+	const startEditListItem = (item: TaskListItem) => {
+		editListItemId = item.id;
+		editListItemTitle = item.title;
+	};
+
+	const cancelEditListItem = () => {
+		editListItemId = null;
+		editListItemTitle = '';
+	};
+
+	const saveEditListItem = async () => {
+		if (!editListItemId || !editListItemTitle.trim() || !supabase) return;
+		const id = editListItemId;
+		const newTitle = editListItemTitle.trim();
+		const { error } = await supabase.from('task_list_items').update({ title: newTitle }).eq('id', id);
+		if (error) {
+			alert('Error al actualizar ítem: ' + error.message);
+			return;
+		}
+		selectedListItems = selectedListItems.map((item) => (item.id === id ? { ...item, title: newTitle } : item));
+		cancelEditListItem();
 	};
 
 	const toggleListItem = async (item: TaskListItem) => {
@@ -2197,11 +2247,24 @@
 							{#each taskLists as list}
 								{@const pct = list.item_count ? Math.round((list.done_count ?? 0) / list.item_count * 100) : 0}
 								<div class="mb-4">
-									<div class="flex items-center justify-between mb-2">
-										<button type="button" class="text-sm font-bold text-brand-text hover:text-brand-accent transition-colors" onclick={() => loadListItems(list)}>
-											{list.name}
-										</button>
-										<span class="text-[10px] text-brand-text-muted">{list.done_count ?? 0}/{list.item_count ?? 0}</span>
+									<div class="flex items-center justify-between mb-2 group/checklist">
+										{#if editChecklistId === list.id}
+											<div class="flex-1 flex items-center gap-2 mr-2">
+												<input type="text" bind:value={editChecklistName} class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-2 py-1 text-sm font-bold text-brand-text focus:outline-none focus:border-brand-accent" onkeydown={(e) => { if (e.key === 'Enter') saveEditChecklist(); if (e.key === 'Escape') cancelEditChecklist(); }} autofocus />
+												<button type="button" class="p-1 text-brand-text-muted hover:text-brand-accent transition-colors" onclick={saveEditChecklist} title="Guardar"><Check class="w-4 h-4" /></button>
+												<button type="button" class="p-1 text-brand-text-muted hover:text-red-400 transition-colors" onclick={cancelEditChecklist} title="Cancelar"><X class="w-4 h-4" /></button>
+											</div>
+										{:else}
+											<div class="flex items-center gap-2">
+												<button type="button" class="text-sm font-bold text-brand-text hover:text-brand-accent transition-colors" onclick={() => loadListItems(list)}>
+													{list.name}
+												</button>
+												<button type="button" class="opacity-0 group-hover/checklist:opacity-100 transition-opacity p-1 text-brand-text-muted hover:text-brand-text" onclick={() => startEditChecklist(list)} title="Editar nombre">
+													<Edit2 class="w-3.5 h-3.5" />
+												</button>
+											</div>
+											<span class="text-[10px] text-brand-text-muted">{list.done_count ?? 0}/{list.item_count ?? 0}</span>
+										{/if}
 									</div>
 									<div class="h-1.5 w-full bg-brand-surface rounded-full overflow-hidden mb-3">
 										<div class="h-full bg-brand-accent rounded-full shadow-[0_0_8px_var(--color-brand-accent)] transition-all" style="width:{pct}%"></div>
@@ -2213,17 +2276,28 @@
 											<div class="space-y-1 mb-3">
 												{#each selectedListItems as item}
 													<div class="group flex items-center gap-3 p-2.5 rounded-lg hover:bg-brand-surface transition-colors">
-														<button type="button" class="shrink-0" onclick={() => toggleListItem(item)}>
-															{#if item.is_completed}
-																<CheckSquare class="w-5 h-5 text-brand-accent" />
-															{:else}
-																<div class="w-5 h-5 rounded-md border-2 border-brand-text-muted group-hover:border-brand-accent transition-colors"></div>
-															{/if}
-														</button>
-														<span class="flex-1 text-sm font-semibold {item.is_completed ? 'line-through text-brand-text-muted' : 'text-brand-text'}">{item.title}</span>
-														<button type="button" class="opacity-0 group-hover:opacity-100 transition-opacity text-brand-text-muted hover:text-red-400" onclick={() => deleteListItem(item.id)}>
-															<X class="w-3.5 h-3.5" />
-														</button>
+														{#if editListItemId === item.id}
+															<input type="text" bind:value={editListItemTitle} class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-2 py-1 text-sm text-brand-text focus:outline-none focus:border-brand-accent" onkeydown={(e) => { if (e.key === 'Enter') saveEditListItem(); if (e.key === 'Escape') cancelEditListItem(); }} autofocus />
+															<button type="button" class="p-1 text-brand-text-muted hover:text-brand-accent transition-colors" onclick={saveEditListItem} title="Guardar"><Check class="w-4 h-4" /></button>
+															<button type="button" class="p-1 text-brand-text-muted hover:text-red-400 transition-colors" onclick={cancelEditListItem} title="Cancelar"><X class="w-4 h-4" /></button>
+														{:else}
+															<button type="button" class="shrink-0" onclick={() => toggleListItem(item)}>
+																{#if item.is_completed}
+																	<CheckSquare class="w-5 h-5 text-brand-accent" />
+																{:else}
+																	<div class="w-5 h-5 rounded-md border-2 border-brand-text-muted group-hover:border-brand-accent transition-colors"></div>
+																{/if}
+															</button>
+															<span class="flex-1 text-sm font-semibold {item.is_completed ? 'line-through text-brand-text-muted' : 'text-brand-text'}">{item.title}</span>
+															<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+																<button type="button" class="p-1 text-brand-text-muted hover:text-brand-text" onclick={() => startEditListItem(item)} title="Editar ítem">
+																	<Edit2 class="w-3.5 h-3.5" />
+																</button>
+																<button type="button" class="p-1 text-brand-text-muted hover:text-red-400" onclick={() => deleteListItem(item.id)} title="Eliminar ítem">
+																	<X class="w-3.5 h-3.5" />
+																</button>
+															</div>
+														{/if}
 													</div>
 												{/each}
 											</div>
