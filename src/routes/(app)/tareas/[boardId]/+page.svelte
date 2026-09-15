@@ -1687,7 +1687,7 @@
 <div class="flex-1 flex flex-col h-full bg-[#070b0e] overflow-hidden">
 	<!-- Top Toolbar -->
 	<header class="shrink-0 border-b border-brand-divider bg-brand-surface px-6 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-		<div class="flex items-center gap-3">
+		<div class="flex flex-wrap items-center gap-3">
 			<button onclick={() => goto('/tareas')} title="Volver a mis tableros" class="flex items-center justify-center p-2 text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated rounded-lg transition-colors border border-brand-divider shadow-sm bg-[#0d1216]">
 				<ArrowLeft class="w-4 h-4" />
 			</button>
