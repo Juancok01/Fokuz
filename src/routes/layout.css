@@ -19,6 +19,8 @@
 @layer base {
   body {
     font-family: 'Inter', sans-serif;
+    color-scheme: dark;
+    accent-color: var(--color-brand-accent);
     @apply bg-brand-bg text-brand-text antialiased;
   }
 }

@@ -345,7 +345,7 @@
 				habitsResult = await supabase
 					.from('habits')
 					.select('id, name, weekdays')
-					.order('created_at', { ascending: true });
+					.order('created_at', { ascending: true }) as any;
 			} else if (!habitsResult.error) {
 				iconsPersist = true;
 			}
@@ -769,13 +769,16 @@
 		</div>
 
 		<div class="flex flex-col md:flex-row gap-4">
-			<div class="flex items-center bg-[#0d1216] border border-brand-divider rounded-2xl p-1 shadow-inner h-fit">
+			<div class="flex items-center justify-between bg-[#0d1216] border border-brand-divider rounded-2xl p-1 shadow-inner h-fit w-full md:w-auto">
 				<button type="button" class="p-2 hover:bg-brand-surface-elevated rounded-xl transition-colors" onclick={prevMonth} aria-label="Mes anterior">
 					<ChevronLeft class="w-4 h-4 text-brand-text-muted" />
 				</button>
-				<div class="px-4 text-center min-w-[140px]">
-					<p class="text-sm font-bold text-brand-text">{MONTH_NAMES[viewMonth]} {viewYear}</p>
-					<p class="text-[10px] text-brand-text-muted font-semibold mt-0.5">{dayCount} Días Registrados</p>
+				<div class="px-4 text-center min-w-[140px] flex-1">
+					<p class="text-sm font-bold text-brand-text">
+						<span class="md:hidden">{MONTH_NAMES[viewMonth].substring(0, 3)} {viewYear}</span>
+						<span class="hidden md:inline">{MONTH_NAMES[viewMonth]} {viewYear}</span>
+					</p>
+					<p class="text-[10px] text-brand-text-muted font-semibold mt-0.5">{dayCount} Días</p>
 				</div>
 				<button type="button" class="p-2 hover:bg-brand-surface-elevated rounded-xl transition-colors" onclick={nextMonth} aria-label="Mes siguiente">
 					<ChevronRight class="w-4 h-4 text-brand-text-muted" />
@@ -783,21 +786,21 @@
 			</div>
 
 			<div class="flex flex-row flex-nowrap gap-3 shrink-0 overflow-x-auto custom-scrollbar w-full md:w-auto pb-2 md:pb-0">
-				<div class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-2 flex items-center gap-3 shadow-inner h-fit shrink-0">
+				<div class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-2 flex items-center gap-3 shadow-inner h-fit shrink-0 flex-1 md:flex-none">
 					<div class="text-brand-bg font-bold bg-brand-accent rounded-md px-2 py-1 text-xs">
 						{monthProgress.pct}%
 					</div>
 					<div>
-						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Cumplimiento Global</p>
-						<p class="text-xs font-bold text-brand-text">{monthProgress.done} de {monthProgress.total} slots</p>
+						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Cumplimiento</p>
+						<p class="text-xs font-bold text-brand-text">{monthProgress.done}/{monthProgress.total}</p>
 					</div>
 				</div>
-				<div class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-2 flex items-center gap-3 shadow-inner h-fit shrink-0">
+				<div class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-2 flex items-center gap-3 shadow-inner h-fit shrink-0 flex-1 md:flex-none">
 					<div class="text-orange-500 bg-orange-500/10 border border-orange-500/20 rounded-md p-1.5">
 						<Flame class="w-4 h-4" />
 					</div>
 					<div>
-						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Días Perfectos</p>
+						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Perfectos</p>
 						<p class="text-xs font-bold text-brand-text">{perfectDays} días {perfectDays === 1 ? 'logrado' : 'logrados'}</p>
 					</div>
 				</div>
@@ -900,7 +903,7 @@
 										<!-- Left Icon -->
 										<button
 											type="button"
-											class="relative w-12 h-12 shrink-0 rounded-xl border bg-brand-surface flex items-center justify-center transition-all hover:scale-105 shadow-inner {habitHealthLabel(health) === 'Óptimo' ? 'border-brand-accent/30 text-brand-accent shadow-[0_0_15px_var(--color-brand-accent-muted)]' : 'border-brand-divider text-brand-text-muted'}"
+											class="relative w-12 h-12 shrink-0 rounded-xl border bg-brand-surface flex items-center justify-center transition-all hover:scale-105 shadow-inner {habitHealthLabel(health) === 'En buen camino' ? 'border-brand-accent/30 text-brand-accent shadow-[0_0_15px_var(--color-brand-accent-muted)]' : 'border-brand-divider text-brand-text-muted'}"
 											onclick={() => openDetail(habit)}
 											title={habit.name}
 										>
