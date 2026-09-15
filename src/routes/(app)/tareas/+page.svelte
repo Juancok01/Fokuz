@@ -261,7 +261,7 @@
 							<h3 class="font-bold text-lg text-brand-text group-hover:text-brand-accent transition-colors">{board.title}</h3>
 						</div>
 						
-						<div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+						<div class="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
 							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div 
