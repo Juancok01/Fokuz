@@ -1,8 +1,16 @@
 /** Temporizador Pomodoro compartido (sobrevive al cambiar de pestaña). */
 import { ytPlayer } from './youtubePlayer.svelte';
 
-export const FOCUS_MS = 25 * 60 * 1000;
-export const BREAK_MS = 5 * 60 * 1000;
+export let FOCUS_MS = 25 * 60 * 1000;
+export let BREAK_MS = 5 * 60 * 1000;
+
+export const setPomodoroTimes = (focusMins: number, breakMins: number) => {
+	FOCUS_MS = focusMins * 60 * 1000;
+	BREAK_MS = breakMins * 60 * 1000;
+	if (!pomodoro.running && !pomodoro.awaitingAck) {
+		pomodoro.remainingMs = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
+	}
+};
 
 export type PomodoroPhase = 'focus' | 'break';
 
@@ -10,11 +18,11 @@ export const pomodoro = $state({
 	phase: 'focus' as PomodoroPhase,
 	remainingMs: FOCUS_MS,
 	running: false,
-	/** true cuando el ciclo terminó y suena hasta pulsar OK */
 	awaitingAck: false,
 	sessions: 0,
 	linkedTaskId: null as number | null,
-	linkedTaskTitle: ''
+	linkedTaskTitle: '',
+	completedTasks: [] as {title: string, duration: number}[]
 });
 
 let endsAt: number | null = null;
@@ -122,6 +130,9 @@ export const acknowledgePomodoro = () => {
 
 	if (pomodoro.phase === 'focus') {
 		pomodoro.sessions += 1;
+		if (pomodoro.linkedTaskTitle) {
+			pomodoro.completedTasks.push({ title: pomodoro.linkedTaskTitle, duration: Math.round(FOCUS_MS / 60000) });
+		}
 		pomodoro.phase = 'break';
 		pomodoro.remainingMs = BREAK_MS;
 	} else {
