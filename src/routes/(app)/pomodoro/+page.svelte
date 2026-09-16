@@ -8,7 +8,7 @@
 	} from 'lucide-svelte';
 	import {
 		BREAK_MS, FOCUS_MS, acknowledgePomodoro, clearPomodoroTask, formatPomodoroTime,
-		pausePomodoro, pomodoro, resetPomodoro, setPomodoroPhase, startPomodoro
+		pausePomodoro, pomodoro, resetPomodoro, setPomodoroPhase, startPomodoro, setPomodoroTimes
 	} from '$lib/pomodoro.svelte';
 	import { ytPlayer } from '$lib/youtubePlayer.svelte';
 
@@ -25,12 +25,46 @@
 	let focusMins = $state(25);
 	let breakMins = $state(5);
 	
+	$effect(() => {
+		setPomodoroTimes(focusMins, breakMins);
+	});
+	
 	let noiseRain = $state(false);
 	let noiseBrown = $state(false);
 	let noiseFire = $state(false);
 	let volRain = $state(50);
 	let volBrown = $state(50);
 	let volFire = $state(50);
+
+	let audioMode = $state<'music' | 'ambient'>('music');
+	let editTrackIndex = $state<number | null>(null);
+	let editTrackTitle = $state('');
+	let viewingPlaylistId = $state<string | null>(null);
+	let newPlaylistName = $state('');
+	let editPlaylistId = $state<string | null>(null);
+	let editPlaylistName = $state('');
+
+	let audioRain: HTMLAudioElement;
+	let audioBrown: HTMLAudioElement;
+	let audioFire: HTMLAudioElement;
+
+	$effect(() => {
+		if (audioRain) {
+			audioRain.volume = volRain / 100;
+			if (noiseRain && audioRain.paused) { const p = audioRain.play(); if (p) p.catch(() => {}); }
+			else if (!noiseRain && !audioRain.paused) audioRain.pause();
+		}
+		if (audioBrown) {
+			audioBrown.volume = volBrown / 100;
+			if (noiseBrown && audioBrown.paused) { const p = audioBrown.play(); if (p) p.catch(() => {}); }
+			else if (!noiseBrown && !audioBrown.paused) audioBrown.pause();
+		}
+		if (audioFire) {
+			audioFire.volume = volFire / 100;
+			if (noiseFire && audioFire.paused) { const p = audioFire.play(); if (p) p.catch(() => {}); }
+			else if (!noiseFire && !audioFire.paused) audioFire.pause();
+		}
+	});
 
 	onMount(() => {
 		ytPlayer.init('youtube-player-container');
@@ -61,25 +95,12 @@
 			<div>
 				<div class="flex items-center gap-3">
 					<h1 class="text-xl font-bold text-brand-text">Temporizador Pomodoro & Enfoque</h1>
-					<span class="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/30">Sesión activa</span>
 				</div>
 				<p class="text-xs text-brand-text-muted mt-1 font-medium">Sesiones guiadas de alto rendimiento con música ambiental, temporizadores adaptativos y control de tareas.</p>
 			</div>
 		</div>
 		
-		<div class="flex items-center gap-4 bg-[#070b0e] border border-brand-divider rounded-xl p-2">
-			<div class="text-right px-2">
-				<p class="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider">Ciclo Actual</p>
-				<p class="text-sm font-bold text-brand-text">2 de 4 <span class="text-brand-text-muted font-normal">· Enfoque</span></p>
-			</div>
-			<button class="w-8 h-8 rounded-lg bg-brand-surface border border-brand-divider flex items-center justify-center hover:bg-brand-surface-elevated transition-colors text-brand-accent">
-				<RotateCcw class="w-4 h-4" />
-			</button>
-			<div class="h-6 w-px bg-brand-divider mx-1"></div>
-			<button class="px-4 py-1.5 rounded-lg flex items-center gap-2 text-[11px] font-bold text-brand-text hover:text-brand-accent transition-colors">
-				<Settings2 class="w-4 h-4" /> Personalizar Tiempos
-			</button>
-		</div>
+
 	</div>
 
 	<!-- Main 2-Column Layout -->
@@ -88,30 +109,6 @@
 		<!-- Left Column: Timer & Controls -->
 		<div class="lg:col-span-8 flex flex-col gap-6">
 			
-			<!-- Phase Tabs -->
-			<div class="grid grid-cols-3 gap-2 bg-[#0d1216] border border-brand-divider rounded-2xl p-1.5">
-				<button 
-					type="button" 
-					class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all {pomodoro.phase === 'focus' ? 'bg-brand-accent text-brand-bg shadow-[0_0_10px_var(--color-brand-accent-muted)]' : 'text-brand-text-muted hover:text-brand-text'}" 
-					onclick={() => setPomodoroPhase('focus')}
-				>
-					<Target class="w-4 h-4" /> Enfoque · 25 min
-				</button>
-				<button 
-					type="button" 
-					class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all {pomodoro.phase === 'break' && focusMins === 25 ? 'bg-brand-surface-elevated text-brand-text shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}" 
-					onclick={() => setPomodoroPhase('break')}
-				>
-					<Coffee class="w-4 h-4" /> Descanso Corto · 5 min
-				</button>
-				<button 
-					type="button" 
-					class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all text-brand-text-muted hover:text-brand-text"
-				>
-					<Coffee class="w-4 h-4" /> Descanso Largo · 15 min
-				</button>
-			</div>
-
 			<!-- Quick Config -->
 			<div class="bg-[#0d1216] border border-brand-divider rounded-2xl p-5">
 				<div class="flex items-center justify-between mb-4">
@@ -154,6 +151,24 @@
 				</div>
 			</div>
 
+			<!-- Phase Tabs -->
+			<div class="grid grid-cols-2 gap-2 bg-[#0d1216] border border-brand-divider rounded-2xl p-1.5">
+				<button 
+					type="button" 
+					class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all {pomodoro.phase === 'focus' ? 'bg-brand-accent text-brand-bg shadow-[0_0_10px_var(--color-brand-accent-muted)]' : 'text-brand-text-muted hover:text-brand-text'}" 
+					onclick={() => setPomodoroPhase('focus')}
+				>
+					<Target class="w-4 h-4" /> Enfoque · {focusMins} min
+				</button>
+				<button 
+					type="button" 
+					class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all {pomodoro.phase === 'break' ? 'bg-brand-surface-elevated text-brand-text shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}" 
+					onclick={() => setPomodoroPhase('break')}
+				>
+					<Coffee class="w-4 h-4" /> Descanso Corto · {breakMins} min
+				</button>
+			</div>
+
 			<!-- Giant Timer -->
 			<div class="bg-[#0d1216] border border-brand-divider rounded-[2rem] p-8 flex flex-col items-center relative overflow-hidden shadow-2xl h-[420px]">
 				<!-- Background glow -->
@@ -182,7 +197,6 @@
 						<span class="text-[10px] font-bold uppercase tracking-widest mt-2 {pomodoro.awaitingAck ? 'text-brand-accent' : 'text-brand-text-muted'}">
 							{pomodoro.awaitingAck ? 'Finalizado' : (pomodoro.running ? 'En Curso' : 'Listo para iniciar')}
 						</span>
-						<span class="text-[9px] text-brand-text-muted mt-1 font-semibold">Sesión 1 de 4</span>
 					</div>
 				</div>
 
@@ -202,7 +216,7 @@
 							</button>
 						</div>
 					{:else}
-						<p class="text-[10px] text-brand-text-muted text-center font-medium">Abre una tarea de tu lista y pulsa "Vincular" para registrar estadísticas exactas.</p>
+						<!-- Texto eliminado a petición del usuario -->
 					{/if}
 				</div>
 
@@ -230,11 +244,6 @@
 						<SkipForward class="w-4 h-4" />
 					</button>
 					
-					<div class="absolute -right-24">
-						<button class="p-2 rounded-lg text-brand-text-muted hover:text-brand-text bg-[#070b0e] border border-brand-divider transition-all">
-							<Maximize2 class="w-4 h-4" />
-						</button>
-					</div>
 				</div>
 			</div>
 
@@ -251,127 +260,174 @@
 						</div>
 					</div>
 					<div class="flex gap-1 text-[10px] font-bold p-1 bg-[#070b0e] border border-brand-divider rounded-lg">
-						<button class="px-3 py-1.5 rounded-md bg-brand-surface border border-brand-divider text-brand-accent shadow-sm">YouTube</button>
-						<button class="px-3 py-1.5 rounded-md text-brand-text-muted hover:text-brand-text">Spotify</button>
-						<button class="px-3 py-1.5 rounded-md text-brand-text-muted hover:text-brand-text">Lofi Fokuz</button>
-						<button class="px-3 py-1.5 rounded-md text-brand-text-muted hover:text-brand-text">Ruido Blanco</button>
+						<button class="px-3 py-1.5 rounded-md {audioMode === 'music' ? 'bg-brand-surface border border-brand-divider text-brand-accent shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}" onclick={() => { audioMode = 'music'; }}>Música con Ambiente</button>
+						<button class="px-3 py-1.5 rounded-md {audioMode === 'ambient' ? 'bg-brand-surface border border-brand-divider text-brand-accent shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}" onclick={() => { audioMode = 'ambient'; ytPlayer.pause(); }}>Solo Ambiente</button>
 					</div>
 				</div>
 
-				<form class="flex gap-3 mb-6" onsubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const url = fd.get('url'); if (url) { ytPlayer.addTrack(url.toString()); e.currentTarget.reset(); } }}>
-					<div class="relative flex-1">
-						<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-							<Music class="w-4 h-4 text-brand-text-muted" />
-						</div>
-						<input type="url" name="url" placeholder="Pega un enlace de YouTube, Spotify o lista temática..." class="w-full bg-[#070b0e] border border-brand-divider rounded-xl pl-9 pr-4 py-3 text-xs font-medium text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors shadow-inner" required />
-					</div>
-					<button type="submit" class="px-4 py-3 bg-brand-surface border border-brand-divider rounded-xl text-[11px] font-bold text-brand-accent hover:bg-brand-surface-elevated transition-colors flex items-center gap-2">
-						<Plus class="w-4 h-4" /> Añadir Pista
-					</button>
-					<button type="button" class="px-4 py-3 bg-brand-accent/10 border border-brand-accent/30 rounded-xl text-[11px] font-bold text-brand-accent hover:bg-brand-accent/20 transition-colors flex items-center gap-2">
-						<Sparkles class="w-4 h-4" /> Generar con IA
-					</button>
-				</form>
-
-				<div class="space-y-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-					{#if ytPlayer.playlist.length > 0}
-						{#each ytPlayer.playlist as track, i}
-							<div class="flex items-center justify-between bg-[#070b0e] border {i === ytPlayer.currentTrackIndex ? 'border-brand-accent bg-brand-accent/5 shadow-inner' : 'border-brand-divider hover:border-brand-accent/50'} rounded-xl p-3 transition-colors group">
-								<div class="flex items-center gap-4 min-w-0">
-									<div class="w-10 h-10 rounded-lg {i === ytPlayer.currentTrackIndex ? 'bg-brand-accent/20 text-brand-accent' : 'bg-brand-surface text-brand-text-muted'} flex items-center justify-center shrink-0 border border-brand-divider">
-										<Music class="w-4 h-4" />
-									</div>
-									<div class="min-w-0">
-										<div class="flex items-center gap-2 mb-0.5">
-											<h4 class="text-xs font-bold text-brand-text truncate">{track.title}</h4>
-											{#if i === ytPlayer.currentTrackIndex && ytPlayer.isPlaying}
-												<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-brand-accent text-brand-bg uppercase">En vivo</span>
-											{/if}
-										</div>
-										<p class="text-[10px] text-brand-text-muted truncate">Lofi Girl · Concentración Profunda</p>
-									</div>
+				{#if audioMode === 'music'}
+					{#if viewingPlaylistId === null}
+						<!-- Vista de Playlists -->
+						<form class="flex gap-3 mb-6" onsubmit={(e) => { e.preventDefault(); if (newPlaylistName.trim()) { ytPlayer.createPlaylist(newPlaylistName.trim()); newPlaylistName = ''; } }}>
+							<div class="relative flex-1">
+								<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+									<ListChecks class="w-4 h-4 text-brand-text-muted" />
 								</div>
-								
-								<div class="flex items-center gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-									{#if i === ytPlayer.currentTrackIndex}
-										<!-- Active track visualizer -->
-										<div class="flex gap-0.5 items-end h-4 mx-2">
-											<div class="w-1 bg-brand-accent h-full animate-bounce [animation-delay:-0.3s]"></div>
-											<div class="w-1 bg-brand-accent h-2/3 animate-bounce [animation-delay:-0.15s]"></div>
-											<div class="w-1 bg-brand-accent h-1/2 animate-bounce"></div>
-											<div class="w-1 bg-brand-accent h-4/5 animate-bounce [animation-delay:-0.2s]"></div>
-										</div>
-										
-										<!-- Controls for active -->
-										<button class="p-1.5 rounded-lg text-brand-text hover:text-brand-accent bg-brand-surface border border-brand-divider" onclick={() => ytPlayer.playTrack(i===0?ytPlayer.playlist.length-1:i-1)}><SkipForward class="w-3.5 h-3.5 rotate-180" /></button>
-										<button class="p-1.5 rounded-lg text-brand-bg bg-brand-accent" onclick={() => ytPlayer.togglePlay()}>
-											{#if ytPlayer.isPlaying}<Pause class="w-4 h-4" fill="currentColor" />{:else}<Play class="w-4 h-4" fill="currentColor" />{/if}
-										</button>
-										<button class="p-1.5 rounded-lg text-brand-text hover:text-brand-accent bg-brand-surface border border-brand-divider" onclick={() => ytPlayer.next()}><SkipForward class="w-3.5 h-3.5" /></button>
-										
-										<div class="flex items-center gap-1.5 ml-2">
-											<Volume2 class="w-3.5 h-3.5 text-brand-text-muted" />
-											<input type="range" min="0" max="100" value={ytPlayer.volume} oninput={(e) => ytPlayer.setVolume(Number(e.currentTarget.value))} class="w-16 accent-brand-accent h-1 bg-brand-divider rounded-lg appearance-none" />
-										</div>
-									{:else}
-										<button class="p-2 rounded-lg text-brand-text bg-brand-surface border border-brand-divider hover:text-brand-accent transition-colors" onclick={() => ytPlayer.playTrack(i)}>
-											<Play class="w-4 h-4" fill="currentColor" />
-										</button>
-										<button class="p-2 rounded-lg text-brand-text-muted hover:text-red-400 transition-colors" onclick={() => ytPlayer.removeTrack(i)}>
-											<Trash2 class="w-4 h-4" />
-										</button>
-									{/if}
-								</div>
+								<input type="text" bind:value={newPlaylistName} placeholder="Nombre de la nueva playlist..." class="w-full bg-[#070b0e] border border-brand-divider rounded-xl pl-9 pr-4 py-3 text-xs font-medium text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors shadow-inner" required />
 							</div>
-						{/each}
+							<button type="submit" class="px-4 py-3 bg-brand-surface border border-brand-divider rounded-xl text-[11px] font-bold text-brand-accent hover:bg-brand-surface-elevated transition-colors flex items-center gap-2">
+								<Plus class="w-4 h-4" /> Crear Playlist
+							</button>
+						</form>
+
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+							{#each ytPlayer.playlists as playlist}
+								<div class="flex flex-col justify-between bg-[#070b0e] border {ytPlayer.currentPlaylistId === playlist.id ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-divider hover:border-brand-accent/50'} rounded-xl p-3 transition-colors cursor-pointer group" onclick={() => viewingPlaylistId = playlist.id}>
+									<div class="flex items-center justify-between mb-2">
+										<div class="flex items-center gap-2 min-w-0 flex-1">
+											<div class="w-8 h-8 rounded-lg {ytPlayer.currentPlaylistId === playlist.id ? 'bg-brand-accent/20 text-brand-accent' : 'bg-brand-surface text-brand-text-muted'} flex items-center justify-center shrink-0 border border-brand-divider">
+												<Music class="w-3.5 h-3.5" />
+											</div>
+											<div class="min-w-0 flex-1" onclick={(e) => e.stopPropagation()}>
+												{#if editPlaylistId === playlist.id}
+													<div class="flex items-center gap-1">
+														<input type="text" bind:value={editPlaylistName} class="bg-[#0d1216] border border-brand-divider rounded px-1.5 py-0.5 text-xs text-brand-text focus:outline-none focus:border-brand-accent w-full" onkeydown={(e) => { if (e.key === 'Enter') { ytPlayer.updatePlaylistName(playlist.id, editPlaylistName); editPlaylistId = null; } else if (e.key === 'Escape') editPlaylistId = null; }} autofocus />
+														<button class="text-brand-accent" onclick={() => { ytPlayer.updatePlaylistName(playlist.id, editPlaylistName); editPlaylistId = null; }}><Check class="w-3 h-3" /></button>
+														<button class="text-red-400" onclick={() => editPlaylistId = null}><X class="w-3 h-3" /></button>
+													</div>
+												{:else}
+													<h4 class="text-xs font-bold text-brand-text truncate">{playlist.name}</h4>
+												{/if}
+											</div>
+										</div>
+										<div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" onclick={(e) => e.stopPropagation()}>
+											<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-brand-accent transition-colors" onclick={() => { editPlaylistId = playlist.id; editPlaylistName = playlist.name; }}>
+												<Settings2 class="w-3.5 h-3.5" />
+											</button>
+											<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-red-400 transition-colors" onclick={() => ytPlayer.deletePlaylist(playlist.id)}>
+												<Trash2 class="w-3.5 h-3.5" />
+											</button>
+										</div>
+									</div>
+									<p class="text-[10px] text-brand-text-muted flex items-center gap-1">
+										<ListChecks class="w-3 h-3" /> {playlist.tracks.length} pista(s)
+										{#if ytPlayer.currentPlaylistId === playlist.id && ytPlayer.isPlaying}
+											<span class="ml-auto flex gap-0.5 items-end h-2">
+												<div class="w-0.5 bg-brand-accent h-full animate-bounce [animation-delay:-0.3s]"></div>
+												<div class="w-0.5 bg-brand-accent h-2/3 animate-bounce [animation-delay:-0.15s]"></div>
+												<div class="w-0.5 bg-brand-accent h-1/2 animate-bounce"></div>
+											</span>
+										{/if}
+									</p>
+								</div>
+							{/each}
+							{#if ytPlayer.playlists.length === 0}
+								<div class="col-span-1 md:col-span-2 text-xs text-brand-text-muted italic bg-[#070b0e] px-3 py-4 text-center rounded-lg border border-brand-divider">
+									No tienes ninguna playlist. Crea una arriba para empezar.
+								</div>
+							{/if}
+						</div>
 					{:else}
-						<!-- Mock items to match design -->
-						<div class="flex items-center justify-between bg-[#070b0e] border border-brand-accent/50 bg-brand-accent/5 shadow-inner rounded-xl p-3">
-							<div class="flex items-center gap-4 min-w-0">
-								<div class="w-10 h-10 rounded-lg bg-brand-accent/20 text-brand-accent flex items-center justify-center shrink-0 border border-brand-accent/30">
-									<Music class="w-4 h-4" />
-								</div>
-								<div class="min-w-0">
-									<div class="flex items-center gap-2 mb-0.5">
-										<h4 class="text-xs font-bold text-brand-text truncate">Synthwave Chill Focus Beats</h4>
-										<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-brand-accent text-brand-bg uppercase">En vivo</span>
+						<!-- Vista de Pistas -->
+						{#if ytPlayer.getPlaylist(viewingPlaylistId)}
+							{@const currentViewedPlaylist = ytPlayer.getPlaylist(viewingPlaylistId)!}
+							<div class="flex items-center gap-3 mb-4">
+								<button class="text-brand-text-muted hover:text-brand-accent flex items-center gap-1 text-[10px] font-bold" onclick={() => viewingPlaylistId = null}>
+									&larr; Volver a Playlists
+								</button>
+								<h4 class="text-xs font-bold text-brand-text truncate flex-1">{currentViewedPlaylist.name}</h4>
+							</div>
+
+							<form class="flex gap-3 mb-6" onsubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const url = fd.get('url'); if (url && viewingPlaylistId) { ytPlayer.addTrack(viewingPlaylistId, url.toString()); e.currentTarget.reset(); } }}>
+								<div class="relative flex-1">
+									<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+										<Music class="w-4 h-4 text-brand-text-muted" />
 									</div>
-									<p class="text-[10px] text-brand-text-muted truncate">Lofi Girl · Concentración Profunda para Programación</p>
+									<input type="url" name="url" placeholder="Pega un enlace de YouTube..." class="w-full bg-[#070b0e] border border-brand-divider rounded-xl pl-9 pr-4 py-3 text-xs font-medium text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors shadow-inner" required />
 								</div>
+								<button type="submit" class="px-4 py-3 bg-brand-surface border border-brand-divider rounded-xl text-[11px] font-bold text-brand-accent hover:bg-brand-surface-elevated transition-colors flex items-center gap-2">
+									<Plus class="w-4 h-4" /> Añadir Pista
+								</button>
+							</form>
+
+							<div class="space-y-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+								{#if currentViewedPlaylist.tracks.length > 0}
+									{#each currentViewedPlaylist.tracks as track, i}
+										<div class="flex items-center justify-between bg-[#070b0e] border {viewingPlaylistId === ytPlayer.currentPlaylistId && i === ytPlayer.currentTrackIndex ? 'border-brand-accent bg-brand-accent/5 shadow-inner' : 'border-brand-divider hover:border-brand-accent/50'} rounded-xl p-3 transition-colors group">
+											<div class="flex items-center gap-4 min-w-0 flex-1">
+												<div class="w-10 h-10 rounded-lg {viewingPlaylistId === ytPlayer.currentPlaylistId && i === ytPlayer.currentTrackIndex ? 'bg-brand-accent/20 text-brand-accent' : 'bg-brand-surface text-brand-text-muted'} flex items-center justify-center shrink-0 border border-brand-divider">
+													<Music class="w-4 h-4" />
+												</div>
+												<div class="min-w-0 flex-1">
+													{#if editTrackIndex === i}
+														<div class="flex items-center gap-2">
+															<input type="text" bind:value={editTrackTitle} class="bg-[#070b0e] border border-brand-divider rounded px-2 py-1 text-xs text-brand-text focus:outline-none focus:border-brand-accent w-full" onkeydown={(e) => { if (e.key === 'Enter') { ytPlayer.updateTrackTitle(viewingPlaylistId!, i, editTrackTitle); editTrackIndex = null; } else if (e.key === 'Escape') editTrackIndex = null; }} autofocus />
+															<button class="text-brand-accent hover:text-brand-accent/80" onclick={() => { ytPlayer.updateTrackTitle(viewingPlaylistId!, i, editTrackTitle); editTrackIndex = null; }}><Check class="w-3.5 h-3.5" /></button>
+															<button class="text-red-400 hover:text-red-500" onclick={() => editTrackIndex = null}><X class="w-3.5 h-3.5" /></button>
+														</div>
+													{:else}
+														<div class="flex items-center gap-2 mb-0.5">
+															<h4 class="text-xs font-bold text-brand-text truncate">{track.title}</h4>
+															{#if viewingPlaylistId === ytPlayer.currentPlaylistId && i === ytPlayer.currentTrackIndex && ytPlayer.isPlaying}
+																<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-brand-accent text-brand-bg uppercase">En vivo</span>
+															{/if}
+														</div>
+														<p class="text-[10px] text-brand-text-muted truncate">Pista de YouTube</p>
+													{/if}
+												</div>
+											</div>
+											
+											<div class="flex items-center gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+												{#if viewingPlaylistId === ytPlayer.currentPlaylistId && i === ytPlayer.currentTrackIndex}
+													<!-- Active track visualizer -->
+													<div class="flex gap-0.5 items-end h-4 mx-2">
+														<div class="w-1 bg-brand-accent h-full animate-bounce [animation-delay:-0.3s]"></div>
+														<div class="w-1 bg-brand-accent h-2/3 animate-bounce [animation-delay:-0.15s]"></div>
+														<div class="w-1 bg-brand-accent h-1/2 animate-bounce"></div>
+														<div class="w-1 bg-brand-accent h-4/5 animate-bounce [animation-delay:-0.2s]"></div>
+													</div>
+													
+													<!-- Controls for active -->
+													<button class="p-1.5 rounded-lg text-brand-text hover:text-brand-accent bg-brand-surface border border-brand-divider" onclick={() => ytPlayer.playTrack(viewingPlaylistId!, i===0?currentViewedPlaylist.tracks.length-1:i-1)}><SkipForward class="w-3.5 h-3.5 rotate-180" /></button>
+													<button class="p-1.5 rounded-lg text-brand-bg bg-brand-accent" onclick={() => ytPlayer.togglePlay()}>
+														{#if ytPlayer.isPlaying}<Pause class="w-4 h-4" fill="currentColor" />{:else}<Play class="w-4 h-4" fill="currentColor" />{/if}
+													</button>
+													<button class="p-1.5 rounded-lg text-brand-text hover:text-brand-accent bg-brand-surface border border-brand-divider" onclick={() => ytPlayer.next()}><SkipForward class="w-3.5 h-3.5" /></button>
+													
+													<div class="flex items-center gap-1.5 ml-2">
+														<Volume2 class="w-3.5 h-3.5 text-brand-text-muted" />
+														<input type="range" min="0" max="100" value={ytPlayer.volume} oninput={(e) => ytPlayer.setVolume(Number(e.currentTarget.value))} class="w-16 accent-brand-accent h-1 bg-brand-divider rounded-lg appearance-none" />
+													</div>
+												{:else}
+													<button class="p-2 rounded-lg text-brand-text bg-brand-surface border border-brand-divider hover:text-brand-accent transition-colors" onclick={() => ytPlayer.playTrack(viewingPlaylistId!, i)}>
+														<Play class="w-4 h-4" fill="currentColor" />
+													</button>
+													<button class="p-2 rounded-lg text-brand-text-muted hover:text-brand-accent transition-colors" onclick={() => { editTrackIndex = i; editTrackTitle = track.title; }}>
+														<Settings2 class="w-4 h-4" />
+													</button>
+													<button class="p-2 rounded-lg text-brand-text-muted hover:text-red-400 transition-colors" onclick={() => ytPlayer.removeTrack(viewingPlaylistId!, i)}>
+														<Trash2 class="w-4 h-4" />
+													</button>
+												{/if}
+											</div>
+										</div>
+									{/each}
+								{:else}
+									<div class="text-xs text-brand-text-muted italic bg-[#070b0e] px-3 py-4 text-center rounded-lg border border-brand-divider">
+										Agrega un enlace de YouTube para empezar tu lista de reproducción.
+									</div>
+								{/if}
 							</div>
-							<div class="flex items-center gap-3">
-								<div class="flex gap-0.5 items-end h-4 mx-2">
-									<div class="w-1 bg-brand-accent h-full"></div>
-									<div class="w-1 bg-brand-accent h-2/3"></div>
-									<div class="w-1 bg-brand-accent h-1/2"></div>
-									<div class="w-1 bg-brand-accent h-4/5"></div>
-								</div>
-								<button class="p-1.5 rounded-lg text-brand-text hover:text-brand-accent bg-brand-surface border border-brand-divider"><SkipForward class="w-3.5 h-3.5 rotate-180" /></button>
-								<button class="p-1.5 rounded-lg text-brand-bg bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent)]"><Play class="w-4 h-4" fill="currentColor" /></button>
-								<button class="p-1.5 rounded-lg text-brand-text hover:text-brand-accent bg-brand-surface border border-brand-divider"><SkipForward class="w-3.5 h-3.5" /></button>
-								<div class="flex items-center gap-1.5 ml-2">
-									<Volume2 class="w-3.5 h-3.5 text-brand-text-muted" />
-									<input type="range" class="w-16 accent-brand-accent h-1 bg-brand-divider rounded-lg appearance-none" />
-								</div>
-							</div>
-						</div>
-						
-						<div class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-xl p-3">
-							<div class="flex items-center gap-4 min-w-0">
-								<div class="w-10 h-10 rounded-lg bg-brand-surface text-brand-text-muted flex items-center justify-center shrink-0 border border-brand-divider">
-									<Activity class="w-4 h-4" />
-								</div>
-								<div class="min-w-0">
-									<h4 class="text-xs font-bold text-brand-text truncate mb-0.5">Alpha Waves 432Hz</h4>
-									<p class="text-[10px] text-brand-text-muted truncate">Neurociencia · Foco Puro</p>
-								</div>
-							</div>
-						</div>
+						{/if}
 					{/if}
-				</div>
+				{/if}
 			</div>
 			
 			<div id="youtube-player-container" class="hidden"></div>
+			
+			<audio bind:this={audioRain} loop src="https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg" crossorigin="anonymous"></audio>
+			<audio bind:this={audioBrown} loop src="https://upload.wikimedia.org/wikipedia/commons/4/47/Wind_in_forest_%28Gravity_Sound%29.wav" crossorigin="anonymous"></audio>
+			<audio bind:this={audioFire} loop src="https://actions.google.com/sounds/v1/ambiences/fire.ogg" crossorigin="anonymous"></audio>
 		</div>
 
 		<!-- Right Column: Metrics & Environment -->
@@ -384,51 +440,31 @@
 					<span class="text-[9px] font-bold text-brand-accent bg-brand-accent/10 px-2 py-0.5 rounded-md border border-brand-accent/20">Semana 37</span>
 				</div>
 				
-				<div class="grid grid-cols-2 gap-3 mb-6">
-					<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-inner">
-						<Flame class="w-4 h-4 text-orange-500 mb-1" />
-						<p class="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider mb-0.5">Racha Activa</p>
-						<p class="text-lg font-black text-brand-text">6 días</p>
-					</div>
-					<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-3 flex flex-col justify-center items-center text-center shadow-inner">
-						<Zap class="w-4 h-4 text-brand-accent mb-1" />
-						<p class="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider mb-0.5">Rendimiento</p>
-						<p class="text-lg font-black text-brand-accent">Óptimo</p>
-					</div>
-				</div>
-
-				<div class="mb-6">
-					<div class="flex items-center justify-between text-[10px] font-bold mb-2">
-						<span class="text-brand-text">Progreso: 4 de 6 sesiones</span>
-						<span class="text-brand-accent">66%</span>
-					</div>
-					<div class="h-2 bg-[#070b0e] border border-brand-divider rounded-full overflow-hidden mb-2">
-						<div class="h-full bg-brand-accent w-[66%] shadow-[0_0_5px_var(--color-brand-accent)] rounded-full"></div>
-					</div>
-					<div class="flex items-center justify-between text-[9px] font-medium text-brand-text-muted">
-						<span>1h 40m foco acumulado</span>
-						<span>Meta: 2h 30m</span>
-					</div>
+				<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-4 flex flex-col justify-center items-center text-center shadow-inner mb-6">
+					<Target class="w-5 h-5 text-brand-accent mb-2" />
+					<p class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-1">Sesiones Completadas Hoy</p>
+					<p class="text-3xl font-black text-brand-text">{pomodoro.sessions}</p>
 				</div>
 
 				<div>
-					<p class="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider mb-3">Sesiones Recientes</p>
-					<div class="space-y-2">
-						<div class="flex items-center justify-between text-[11px] bg-[#070b0e] px-3 py-2 rounded-lg border border-brand-divider">
-							<div class="flex items-center gap-2">
-								<span class="w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
-								<span class="font-semibold text-brand-text truncate">Revisión de métricas Sprint 37</span>
-							</div>
-							<span class="text-brand-text-muted font-bold">25m</span>
+					<p class="text-[9px] font-bold text-brand-text-muted uppercase tracking-wider mb-3">Tareas con Foco</p>
+					{#if pomodoro.completedTasks.length > 0}
+						<div class="space-y-2">
+							{#each pomodoro.completedTasks as ct}
+								<div class="flex items-center justify-between text-[11px] bg-[#070b0e] px-3 py-2 rounded-lg border border-brand-divider">
+									<div class="flex items-center gap-2">
+										<span class="w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
+										<span class="font-semibold text-brand-text truncate">{ct.title}</span>
+									</div>
+									<span class="text-brand-text-muted font-bold">{ct.duration}m</span>
+								</div>
+							{/each}
 						</div>
-						<div class="flex items-center justify-between text-[11px] bg-[#070b0e] px-3 py-2 rounded-lg border border-brand-divider">
-							<div class="flex items-center gap-2">
-								<span class="w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
-								<span class="font-semibold text-brand-text truncate">Estructura Base de Datos Fokuz</span>
-							</div>
-							<span class="text-brand-text-muted font-bold">45m</span>
+					{:else}
+						<div class="text-xs text-brand-text-muted italic bg-[#070b0e] px-3 py-4 text-center rounded-lg border border-brand-divider">
+							No has anclado ninguna tarea a tus sesiones aún.
 						</div>
-					</div>
+					{/if}
 				</div>
 			</div>
 
@@ -459,14 +495,14 @@
 						{/if}
 					</div>
 					
-					<!-- Ruido Marrón -->
+					<!-- Bosque -->
 					<div class="flex flex-col gap-2 pt-2 border-t border-brand-divider/50">
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-3">
-								<div class="w-8 h-8 rounded-lg bg-[#070b0e] border border-brand-divider flex items-center justify-center text-amber-600"><Wind class="w-4 h-4" /></div>
+								<div class="w-8 h-8 rounded-lg bg-[#070b0e] border border-brand-divider flex items-center justify-center text-green-500"><Wind class="w-4 h-4" /></div>
 								<div>
-									<p class="text-xs font-bold text-brand-text">Ruido Marrón Profundo</p>
-									<p class="text-[9px] text-brand-text-muted">Aislamiento acústico total</p>
+									<p class="text-xs font-bold text-brand-text">Bosque Matutino</p>
+									<p class="text-[9px] text-brand-text-muted">Pájaros y naturaleza</p>
 								</div>
 							</div>
 							<button class="w-6 h-6 rounded-md flex items-center justify-center border transition-colors {noiseBrown ? 'bg-brand-accent border-brand-accent text-brand-bg shadow-[0_0_5px_var(--color-brand-accent-muted)]' : 'bg-brand-surface border-brand-divider text-brand-text-muted'}" onclick={() => noiseBrown=!noiseBrown}>
@@ -484,13 +520,17 @@
 							<div class="flex items-center gap-3">
 								<div class="w-8 h-8 rounded-lg bg-[#070b0e] border border-brand-divider flex items-center justify-center text-orange-500"><Flame class="w-4 h-4" /></div>
 								<div>
-									<p class="text-xs font-bold text-brand-text opacity-70">Hoguera Nocturna</p>
-									<p class="text-[9px] text-brand-text-muted opacity-70">Calidez reconfortante</p>
+									<p class="text-xs font-bold text-brand-text">Hoguera Nocturna</p>
+									<p class="text-[9px] text-brand-text-muted">Calidez reconfortante</p>
 								</div>
 							</div>
-							<button class="w-6 h-6 rounded-md flex items-center justify-center border bg-[#070b0e] border-brand-divider text-brand-text-muted opacity-50 cursor-not-allowed">
+							<button class="w-6 h-6 rounded-md flex items-center justify-center border transition-colors {noiseFire ? 'bg-brand-accent border-brand-accent text-brand-bg shadow-[0_0_5px_var(--color-brand-accent-muted)]' : 'bg-brand-surface border-brand-divider text-brand-text-muted'}" onclick={() => noiseFire=!noiseFire}>
+								{#if noiseFire}<Check class="w-3.5 h-3.5" strokeWidth={3} />{/if}
 							</button>
 						</div>
+						{#if noiseFire}
+							<input type="range" min="0" max="100" bind:value={volFire} class="w-full accent-brand-accent h-1 bg-[#070b0e] border border-brand-divider rounded-lg appearance-none" />
+						{/if}
 					</div>
 				</div>
 			</div>
