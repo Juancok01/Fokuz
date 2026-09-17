@@ -773,7 +773,7 @@
 				<button type="button" class="p-2 hover:bg-brand-surface-elevated rounded-xl transition-colors" onclick={prevMonth} aria-label="Mes anterior">
 					<ChevronLeft class="w-4 h-4 text-brand-text-muted" />
 				</button>
-				<div class="px-4 text-center min-w-[140px] flex-1">
+				<div class="px-4 text-center min-w-35 flex-1">
 					<p class="text-sm font-bold text-brand-text">
 						<span class="md:hidden">{MONTH_NAMES[viewMonth].substring(0, 3)} {viewYear}</span>
 						<span class="hidden md:inline">{MONTH_NAMES[viewMonth]} {viewYear}</span>
@@ -876,14 +876,14 @@
 				<table class="w-full border-collapse min-w-max">
 					<thead>
 						<tr>
-							<th class="sticky left-0 z-20 bg-brand-surface border-b border-r border-brand-divider text-left py-4 px-3 md:px-6 w-[180px] md:w-80 font-bold text-[10px] text-brand-text-muted tracking-widest uppercase">
+							<th class="sticky left-0 z-20 bg-brand-surface border-b border-r border-brand-divider text-left py-4 px-3 md:px-6 w-45 md:w-80 font-bold text-[10px] text-brand-text-muted tracking-widest uppercase">
 								Hábito & Categoría
 							</th>
 							{#each dayNumbers as day (day)}
 								{@const dateStr = formatDayKey(viewYear, viewMonth, day)}
 								{@const weekday = weekdayForMonthDay(viewYear, viewMonth, day)}
 								{@const isToday = dateStr === todayKey}
-								<th class="py-3 px-1 border-b border-brand-divider text-center min-w-[34px] {isToday ? 'bg-brand-accent border-b-brand-accent' : 'bg-transparent'} transition-colors">
+								<th class="py-3 px-1 border-b border-brand-divider text-center min-w-9 {isToday ? 'bg-brand-accent border-b-brand-accent' : 'bg-transparent'} transition-colors">
 									<div class="flex flex-col items-center justify-center gap-0.5">
 										<span class="text-[9px] font-bold uppercase {isToday ? 'text-brand-bg/80' : 'text-brand-text-muted/60'}">{WEEKDAY_LABELS[weekday]}</span>
 										<span class="text-sm font-black {isToday ? 'text-brand-bg' : 'text-brand-text'}">{day}</span>
@@ -898,7 +898,7 @@
 							{@const stats = habitStats.get(habit.id)}
 							{@const health = stats?.health ?? 'neutral'}
 							<tr class="group transition-colors hover:bg-brand-surface/30">
-								<th class="sticky left-0 z-10 bg-[#0d1216] border-r border-brand-divider p-0 align-middle w-[180px] md:w-80 group-hover:bg-[#12181d] transition-colors">
+								<th class="sticky left-0 z-10 bg-[#0d1216] border-r border-brand-divider p-0 align-middle w-45 md:w-80 group-hover:bg-[#12181d] transition-colors">
 									<div class="flex items-center gap-2 md:gap-4 py-3 px-3 md:px-6">
 										<!-- Left Icon -->
 										<button
@@ -942,7 +942,7 @@
 										{#if scheduled}
 											<button
 												type="button"
-												class="w-[28px] h-[28px] mx-auto rounded-[8px] flex items-center justify-center border transition-all active:scale-90 relative overflow-hidden
+												class="w-7 h-7 mx-auto rounded-lg flex items-center justify-center border transition-all active:scale-90 relative overflow-hidden
 												{done 
 													? 'bg-brand-accent border-brand-accent text-brand-bg shadow-[0_0_10px_var(--color-brand-accent-muted)]' 
 													: (isPast 
@@ -954,17 +954,17 @@
 												onclick={() => toggleCell(habit, day)}
 											>
 												{#if done}
-													<Check class="w-[18px] h-[18px]" strokeWidth={3.5} />
+													<Check class="w-4.5 h-4.5" strokeWidth={3.5} />
 												{:else if isPast}
-													<X class="w-[14px] h-[14px]" strokeWidth={3} />
+													<X class="w-3.5 h-3.5" strokeWidth={3} />
 												{:else}
-													<span class="w-[4px] h-[4px] rounded-full bg-brand-text-muted/20"></span>
+													<span class="w-1 h-1 rounded-full bg-brand-text-muted/20"></span>
 												{/if}
 											</button>
 										{:else}
-											<div class="w-[28px] h-[28px] mx-auto flex items-center justify-center" aria-hidden="true">
+											<div class="w-7 h-7 mx-auto flex items-center justify-center" aria-hidden="true">
 												<!-- Unscheduled day (empty dark block) -->
-												<div class="w-full h-full rounded-[8px] bg-brand-surface/20 border border-brand-divider/20"></div>
+												<div class="w-full h-full rounded-lg bg-brand-surface/20 border border-brand-divider/20"></div>
 											</div>
 										{/if}
 									</td>
@@ -1086,7 +1086,7 @@
 					</span>
 					<div class="min-w-0">
 						<p class="text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-1">Hábito</p>
-						<h3 class="text-xl font-bold text-brand-text break-words leading-tight">{selectedHabit.name}</h3>
+						<h3 class="text-xl font-bold text-brand-text overflow-wrap-break-word leading-tight">{selectedHabit.name}</h3>
 					</div>
 				</div>
 				<button type="button" class="p-2 bg-[#0d1216] rounded-xl text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors shrink-0" onclick={closeSheet}>
@@ -1156,6 +1156,7 @@
 					{#each catsToShow as cat (cat)}
 						{#if editingCategory?.old === cat}
 							<div class="flex items-center gap-2 bg-[#12181d] border border-brand-accent/50 rounded-xl p-2 shadow-inner">
+								<!-- svelte-ignore a11y_autofocus -->
 								<input
 									type="text"
 									bind:value={editingCategory.new}
