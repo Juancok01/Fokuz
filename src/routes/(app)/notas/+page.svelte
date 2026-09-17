@@ -4,7 +4,7 @@
 		Search, CalendarDays, Lock, LayoutGrid, List, ChevronRight, Clock,
 		Timer, Share2, MoreHorizontal, Bold, Italic, Underline, CheckSquare,
 		AlignLeft, Code, Target, Check, Edit2, Heading1, Heading2, Heading3,
-		X, Menu
+		X, Menu, Table, ListOrdered
 	} from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
@@ -107,6 +107,7 @@
 			quillInstance = new QuillLib(node, {
 				modules: {
 					syntax: { hljs: hljsLib },
+					table: true,
 					toolbar: '#toolbar-container'
 				},
 				placeholder: 'Escribe el contenido de tu nota aquí...',
@@ -150,6 +151,17 @@
 			isQuillUpdating = false;
 		}
 	});
+
+	function titleAction(node: HTMLElement, title: string) {
+		node.textContent = title;
+		return {
+			update(newTitle: string) {
+				if (node.textContent !== newTitle) {
+					node.textContent = newTitle;
+				}
+			}
+		};
+	}
 
 	async function loadContacts() {
 		if (!supabase) return;
@@ -575,7 +587,7 @@
 						
 						{#if viewMode === 'grid'}
 							<p class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-2 mb-3">
-								{note.excerpt}
+								{note.excerpt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || 'Sin contenido'}
 							</p>
 							<div class="flex items-center justify-between text-[10px] font-bold">
 								<div class="flex items-center gap-3">
@@ -652,7 +664,7 @@
 						
 						{#if viewMode === 'grid'}
 							<p class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-2 mb-3">
-								{note.excerpt}
+								{note.excerpt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || 'Sin contenido'}
 							</p>
 							<div class="flex items-center justify-between text-[10px] font-bold">
 								<span class="text-brand-text-muted">{note.date}</span>
@@ -761,13 +773,13 @@
 			<div class="max-w-3xl mx-auto px-8 py-12 pb-32">
 				
 				<!-- Titulo -->
-				<h1 id="editor-title" class="text-4xl font-black text-brand-text tracking-tight mb-4 outline-none" contenteditable="true" spellcheck="false" onblur={(e) => {
+				<h1 id="editor-title" class="text-4xl font-black text-brand-text tracking-tight mb-4 outline-none" contenteditable="true" spellcheck="false" use:titleAction={activeNote.title} onblur={(e) => {
 					const index = notes.findIndex(n => n.id === activeNote.id);
 					if (index !== -1) notes[index].title = e.currentTarget.textContent || 'Sin título';
 				}} oninput={(e) => {
 					const index = notes.findIndex(n => n.id === activeNote.id);
 					if (index !== -1) notes[index].title = e.currentTarget.textContent || 'Sin título';
-				}}>{activeNote.title}</h1>
+				}}></h1>
 				
 				<!-- Metadatos de la nota -->
 				<div class="flex flex-wrap items-center gap-3 mb-8 text-[11px] font-bold">
@@ -789,9 +801,44 @@
 						<button class="ql-header p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none" value="3" title="Título 3"><Heading3 class="w-4 h-4" /></button>
 					</div>
 					<div class="flex items-center gap-1 pl-2 pr-2 border-r border-brand-divider">
-						<button class="ql-list px-3 py-1.5 flex items-center gap-2 rounded-lg bg-brand-surface-elevated text-brand-accent text-xs font-bold shadow-sm border border-brand-divider focus:outline-none" value="check" title="Lista de tareas"><CheckSquare class="w-4 h-4" /> Checklist</button>
+						<button type="button" class="p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none flex items-center justify-center" title="Checklist" onclick={() => {
+							if(quillInstance) {
+								const format = quillInstance.getFormat();
+								if (format.list === 'checked' || format.list === 'unchecked') {
+									quillInstance.format('list', false);
+								} else {
+									quillInstance.format('list', 'unchecked');
+								}
+							}
+						}}>
+							<CheckSquare class="w-4 h-4" />
+						</button>
+						<button type="button" class="p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none flex items-center justify-center" title="Lista Numerada" onclick={() => {
+							if(quillInstance) {
+								const format = quillInstance.getFormat();
+								quillInstance.format('list', format.list === 'ordered' ? false : 'ordered');
+							}
+						}}>
+							<ListOrdered class="w-4 h-4" />
+						</button>
+						<button type="button" class="p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none flex items-center justify-center" title="Lista de viñetas" onclick={() => {
+							if(quillInstance) {
+								const format = quillInstance.getFormat();
+								quillInstance.format('list', format.list === 'bullet' ? false : 'bullet');
+							}
+						}}>
+							<List class="w-4 h-4" />
+						</button>
 						<button class="ql-align p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none" value="center" title="Alineación Centro"><AlignLeft class="w-4 h-4" /></button>
 						<button class="ql-code-block p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none" title="Código"><Code class="w-4 h-4" /></button>
+						<button type="button" class="p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none flex items-center justify-center" title="Insertar Tabla (2x2)" onclick={() => {
+							if(quillInstance) {
+								const tableModule = quillInstance.getModule('table');
+								if(tableModule) tableModule.insertTable(2, 2);
+							}
+						}}>
+							<Table class="w-4 h-4" />
+						</button>
 					</div>
 					<div class="flex items-center gap-1 pl-2">
 						<button class="ql-blockquote px-3 py-1.5 flex items-center gap-2 rounded-lg text-amber-400 hover:bg-amber-400/10 text-xs font-bold transition-colors focus:outline-none" title="Destacado"><Target class="w-4 h-4" /> Idea clave</button>
@@ -799,7 +846,7 @@
 				</div>
 
 				<!-- Contenido Enriquecido -->
-				<div class="space-y-6 text-[15px] leading-relaxed text-brand-text prose prose-invert prose-brand max-w-none">
+				<div class="space-y-6 text-[15px] leading-relaxed text-brand-text">
 					<div use:quillAction class="min-h-[300px] pb-10"></div>
 				</div>
 			</div>
@@ -1050,3 +1097,34 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	/* Restaurar estilos de lista nativos de Quill 2 que Tailwind elimina por defecto */
+	:global(.ql-editor ul) {
+		list-style-type: disc !important;
+		padding-left: 1.5rem !important;
+	}
+	:global(.ql-editor ol) {
+		list-style-type: decimal !important;
+		padding-left: 1.5rem !important;
+	}
+	:global(.ql-editor ul > li),
+	:global(.ql-editor ol > li) {
+		list-style-type: inherit !important;
+	}
+	/* Evitar que los checklists tengan viñeta y cuadrito a la vez */
+	:global(.ql-editor li[data-list="checked"]),
+	:global(.ql-editor li[data-list="unchecked"]) {
+		list-style-type: none !important;
+	}
+
+	:global(.ql-editor li[data-list="checked"] > .ql-ui:before) {
+		color: var(--color-brand-accent) !important;
+	}
+	:global(.ql-editor li[data-list="unchecked"] > .ql-ui:before) {
+		color: var(--color-brand-text-muted) !important;
+	}
+	:global(.ql-editor table td, .ql-editor table th) {
+		border-color: var(--color-brand-divider) !important;
+	}
+</style>
