@@ -76,7 +76,7 @@
 		return days;
 	});
 
-	function getTasksForCalendarDate(d) {
+	function getTasksForCalendarDate(d: Date) {
 		const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 		return tasks.filter(t => {
 			const targetDate = t.end_date ? t.end_date : t.date;
@@ -89,10 +89,10 @@
 
 	$effect(() => { if (boardId) loadBoard(boardId); });
 
-	async function loadBoard(id) { 
-		const {data} = await supabase.from('boards').select('*').eq('id', id).single(); 
+	async function loadBoard(id: string) { 
+		const {data} = await supabase!.from('boards').select('*').eq('id', id).single(); 
 		currentBoard = data; 
-		const {data: boardsData} = await supabase.from('boards').select('*').order('created_at', { ascending: true });
+		const {data: boardsData} = await supabase!.from('boards').select('*').order('created_at', { ascending: true });
 		allBoards = boardsData || [];
 	}
 	let tasksRefreshing = $state(false);
@@ -348,10 +348,10 @@
 			.order('created_at', { ascending: false });
 
 		if (rowsResult.error && /nickname/i.test(rowsResult.error.message)) {
-			rowsResult = await supabase
+			rowsResult = (await supabase
 				.from('contacts')
 				.select('id, contact_user_id')
-				.order('created_at', { ascending: false });
+				.order('created_at', { ascending: false })) as any;
 		}
 
 		if (rowsResult.error) {
@@ -493,7 +493,7 @@
 
 			let sharedList = normalizeSharedTasks(sharedResult.data);
 			if (sharedResult.error) {
-				console.warn('Error al cargar tareas compartidas:', sharedResult.error.message);
+				console.warn('Error al cargar tareas compartidas:', (sharedResult.error as any).message);
 				sharedList = await fetchSharedTasksFallback(dateStr);
 			} else if (sharedList.length === 0) {
 				// Si el RPC no trae nada, intenta por RLS directo (por si el SQL viejo falla)
@@ -889,7 +889,7 @@
 		if (itemsError) {
 			console.warn('Error cargando list items:', itemsError.message);
 		} else if (itemsData) {
-			const itemsByList = {};
+			const itemsByList: Record<string, any[]> = {};
 			itemsData.forEach((it) => {
 				if (!itemsByList[it.list_id]) itemsByList[it.list_id] = [];
 				itemsByList[it.list_id].push(it);
@@ -926,7 +926,7 @@
 			taskComments = (data ?? []).map(comment => {
 				let userData = { email: 'Usuario', raw_user_meta_data: { name: 'Usuario' } };
 				if (me && me.id === comment.user_id) {
-					userData = { email: me.email, raw_user_meta_data: me.user_metadata };
+					userData = { email: me.email || 'Usuario', raw_user_meta_data: { name: (me.user_metadata as any)?.name || 'Usuario' } };
 				} else {
 					const contact = contacts.find(c => c.id === comment.user_id);
 					if (contact) {
@@ -1013,7 +1013,7 @@
 			await loadTaskComments(task.id);
 		} catch (e) {
 			console.error("Error al abrir tarea:", e);
-			alert("Error al abrir tarea: " + (e.message || String(e)));
+			alert("Error al abrir tarea: " + ((e as Error).message || String(e)));
 		}
 	};
 
@@ -1585,7 +1585,7 @@
 
 	// --- KANBAN LOGIC ---
 	let kanbanState = $derived.by(() => {
-		const cols = {};
+		const cols: Record<string, any[]> = {};
 		boardLists.forEach(l => cols[l.id] = []);
 		tasks.forEach(t => {
 			// Apply "Solo mías" filter
@@ -1603,18 +1603,18 @@
 		return cols;
 	});
 	
-	let boardItems = $state({});
+	let boardItems: Record<string, any[]> = $state({});
 	
 	$effect(() => {
 		boardItems = kanbanState;
 	});
 
-	function handleDndConsiderCards(e, colId) {
+	function handleDndConsiderCards(e: any, colId: string) {
 		boardItems[colId] = e.detail.items;
 	}
-	function handleDndFinalizeCards(e, colId) {
+	function handleDndFinalizeCards(e: any, colId: string) {
 		boardItems[colId] = e.detail.items;
-		boardItems[colId].forEach(async (t, i) => {
+		boardItems[colId].forEach(async (t: any, i: number) => {
 			if (t.order_index !== i || t.list_id !== colId) {
 				const updates = { order_index: i, list_id: colId };
 				const tempTasks = [...tasks];
@@ -1630,11 +1630,11 @@
 		});
 	}
 
-	function handleDndConsiderColumns(e) {
+	function handleDndConsiderColumns(e: any) {
 		boardLists = e.detail.items;
 	}
 
-	async function handleDndFinalizeColumns(e) {
+	async function handleDndFinalizeColumns(e: any) {
 		boardLists = e.detail.items;
 		if (supabase) {
 			const updates = boardLists.map((l, index) => ({
@@ -1656,7 +1656,7 @@
 		const name = newListName.trim();
 		if (!name) return;
 		const orderIndex = boardLists.length;
-		const { data, error } = await supabase.from('board_lists').insert({
+		const { data, error } = await supabase!.from('board_lists').insert({
 			board_id: Number(boardId),
 			name,
 			order_index: orderIndex,
