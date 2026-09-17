@@ -106,6 +106,10 @@
 	let showShareModal = $state(false);
 	let shareSearchQuery = $state("");
 
+	let showNewNoteModal = $state(false);
+	let newNoteTitle = $state("");
+	let isCreatingNote = $state(false);
+
 	type Contact = {
 		id: string;
 		email: string;
@@ -512,15 +516,24 @@
 		await supabase.from("notes").delete().eq("id", idToDelete);
 	}
 
-	async function createNewNote() {
-		if (!supabase) return;
+	function openNewNoteModal() {
+		showNewNoteModal = true;
+		newNoteTitle = "";
+	}
+
+	async function confirmCreateNewNote() {
+		if (!newNoteTitle.trim() || !supabase) return;
+		isCreatingNote = true;
 		const {
 			data: { session },
 		} = await supabase.auth.getSession();
-		if (!session) return;
+		if (!session) {
+			isCreatingNote = false;
+			return;
+		}
 
 		const insertData = {
-			title: "Nueva Nota",
+			title: newNoteTitle.trim(),
 			content: "Escribe aquí el contenido de tu nueva nota...",
 			user_id: session.user.id,
 			folder_id: activeFolderId,
@@ -546,7 +559,9 @@
 			notes = [newNote, ...notes];
 			activeNoteId = newNote.id;
 			currentTime = Date.now();
+			showNewNoteModal = false;
 		}
+		isCreatingNote = false;
 	}
 
 	function updateTitle(e: Event) {
@@ -776,7 +791,7 @@
 				</div>
 				<button
 					class="px-3 py-2.5 bg-brand-accent hover:brightness-110 text-brand-bg rounded-xl font-bold transition-all shadow-[0_0_15px_var(--color-brand-accent-muted)] flex items-center justify-center shrink-0"
-					onclick={createNewNote}
+					onclick={openNewNoteModal}
 					title="Crear nueva nota"
 				>
 					<Plus class="w-4 h-4" />
@@ -1680,6 +1695,51 @@
 						></span>
 					{:else}
 						Eliminar
+					{/if}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Modal Nueva Nota -->
+{#if showNewNoteModal}
+	<div
+		class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+	>
+		<div
+			class="bg-[#070b0e] border border-brand-divider rounded-2xl p-6 w-full max-w-sm shadow-2xl"
+		>
+			<h3 class="text-xl font-bold text-brand-text mb-4">
+				Nueva Nota
+			</h3>
+			<input
+				type="text"
+				bind:value={newNoteTitle}
+				placeholder="Nombre de la nota..."
+				class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-sm font-semibold text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors mb-6 shadow-inner"
+				onkeydown={(e) => e.key === "Enter" && confirmCreateNewNote()}
+				autofocus
+			/>
+			<div class="flex gap-3">
+				<button
+					class="flex-1 py-3 rounded-xl font-bold text-sm text-brand-text-muted hover:text-brand-text transition-colors"
+					onclick={() => (showNewNoteModal = false)}
+					disabled={isCreatingNote}
+				>
+					Cancelar
+				</button>
+				<button
+					class="flex-1 py-3 rounded-xl font-bold text-sm text-brand-bg bg-brand-accent hover:brightness-110 transition-colors shadow-[0_0_15px_var(--color-brand-accent-muted)] disabled:opacity-50 flex items-center justify-center gap-2"
+					onclick={confirmCreateNewNote}
+					disabled={!newNoteTitle.trim() || isCreatingNote}
+				>
+					{#if isCreatingNote}
+						<span
+							class="w-4 h-4 border-2 border-brand-bg/30 border-t-brand-bg rounded-full animate-spin"
+						></span>
+					{:else}
+						Crear
 					{/if}
 				</button>
 			</div>
