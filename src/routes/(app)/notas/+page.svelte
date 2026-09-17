@@ -446,10 +446,10 @@
 	<title>Notas · Fokuz</title>
 </svelte:head>
 
-<div class="flex-1 flex h-full overflow-hidden bg-[#070b0e] text-brand-text">
+<div class="flex-1 flex h-full overflow-hidden bg-[#070b0e] text-brand-text relative">
 	
 	<!-- Left Sidebar (Navegación) -->
-	<aside class="w-64 shrink-0 bg-[#070b0e] border-r border-brand-divider flex-col h-full overflow-y-auto custom-scrollbar z-50 transition-transform duration-300 md:translate-x-0 md:flex {showMobileFolders ? 'fixed inset-y-0 left-0 translate-x-0 shadow-2xl flex' : 'fixed inset-y-0 left-0 -translate-x-full md:relative'}">
+	<aside class="w-64 shrink-0 bg-[#070b0e] border-r border-brand-divider flex-col h-full overflow-y-auto custom-scrollbar z-30 transition-transform duration-300 md:translate-x-0 md:flex {showMobileFolders ? 'absolute inset-y-0 left-0 translate-x-0 shadow-2xl flex' : 'absolute inset-y-0 left-0 -translate-x-full md:relative'}">
 		<div class="p-6 pb-2 flex-1 relative">
 			<div class="flex items-center justify-between mb-4">
 				<h2 class="text-[10px] font-bold text-brand-text-muted tracking-widest uppercase">Carpetas</h2>
@@ -457,7 +457,7 @@
 					<X class="w-4 h-4" />
 				</button>
 			</div>
-			<button class="absolute top-5 right-12 md:right-4 p-1 rounded-md text-brand-text-muted hover:text-brand-text transition-colors" onclick={openNewFolderModal}>
+			<button class="hidden md:block absolute top-5 right-4 p-1 rounded-md text-brand-text-muted hover:text-brand-text transition-colors" onclick={openNewFolderModal}>
 				<Plus class="w-4 h-4" />
 			</button>
 			<ul class="space-y-1 mt-4">
@@ -512,7 +512,7 @@
 	</aside>
 
 	<!-- Middle Column (Lista de Notas) -->
-	<section class="w-full md:w-[380px] shrink-0 bg-[#0d1216] border-r border-brand-divider flex-col h-full z-40 transition-transform duration-300 md:translate-x-0 md:flex shadow-xl {showMobileList ? 'fixed inset-y-0 left-0 translate-x-0 flex' : 'fixed inset-y-0 left-0 -translate-x-full md:relative'}">
+	<section class="w-full md:w-[380px] shrink-0 bg-[#0d1216] border-r border-brand-divider flex-col h-full z-20 transition-transform duration-300 md:translate-x-0 md:flex shadow-xl {showMobileList ? 'absolute inset-y-0 left-0 translate-x-0 flex' : 'absolute inset-y-0 left-0 -translate-x-full md:relative'}">
 		<!-- Header -->
 		<div class="p-6 pb-4 shrink-0 bg-[#0d1216] z-10 sticky top-0">
 			<div class="flex items-center justify-between mb-6">
@@ -547,6 +547,9 @@
 						class="w-full bg-[#070b0e] border border-brand-divider rounded-xl pl-9 pr-4 py-2.5 text-xs font-semibold text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors shadow-inner"
 					/>
 				</div>
+				<button class="px-3 py-2.5 bg-brand-accent hover:brightness-110 text-brand-bg rounded-xl font-bold transition-all shadow-[0_0_15px_var(--color-brand-accent-muted)] flex items-center justify-center shrink-0" onclick={createNewNote} title="Crear nueva nota">
+					<Plus class="w-4 h-4" />
+				</button>
 			</div>
 		</div>
 
@@ -811,12 +814,6 @@
 				</div>
 			</div>
 			{/if}
-		</div>
-
-		<!-- Floating Add Button -->
-		<button class="absolute bottom-10 right-10 w-14 h-14 bg-brand-accent hover:brightness-110 text-brand-bg font-bold rounded-full flex items-center justify-center shadow-[0_0_20px_var(--color-brand-accent-muted)] hover:scale-105 transition-all z-20" onclick={createNewNote} title="Crear nueva nota">
-			<Plus class="w-6 h-6" />
-		</button>
 	</main>
 </div>
 
