@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { supabase } from '$lib/supabaseClient';
 
 export type PlaylistItem = {
 	id: string; // YouTube video ID
@@ -94,26 +95,39 @@ class YouTubePlayer {
 
 	// === PLAYLIST MANAGEMENT ===
 
-	createPlaylist(name: string) {
+	async createPlaylist(name: string) {
 		const newPlaylist: Playlist = {
 			id: crypto.randomUUID(),
 			name,
 			tracks: []
 		};
 		this.playlists.push(newPlaylist);
-		this.savePlaylists();
+		
+		if (supabase) {
+			const { data: { session } } = await supabase.auth.getSession();
+			if (session) {
+				await supabase.from('youtube_playlists').insert({
+					id: newPlaylist.id,
+					user_id: session.user.id,
+					name: newPlaylist.name,
+					tracks: []
+				});
+			}
+		}
 		return newPlaylist.id;
 	}
 
-	updatePlaylistName(id: string, name: string) {
+	async updatePlaylistName(id: string, name: string) {
 		const p = this.playlists.find(p => p.id === id);
 		if (p) {
 			p.name = name;
-			this.savePlaylists();
+			if (supabase) {
+				await supabase.from('youtube_playlists').update({ name }).eq('id', id);
+			}
 		}
 	}
 
-	deletePlaylist(id: string) {
+	async deletePlaylist(id: string) {
 		this.playlists = this.playlists.filter(p => p.id !== id);
 		if (this.currentPlaylistId === id) {
 			this.currentPlaylistId = null;
@@ -123,7 +137,9 @@ class YouTubePlayer {
 				this.isPlaying = false;
 			}
 		}
-		this.savePlaylists();
+		if (supabase) {
+			await supabase.from('youtube_playlists').delete().eq('id', id);
+		}
 	}
 
 	getPlaylist(id: string | null): Playlist | undefined {
@@ -156,7 +172,7 @@ class YouTubePlayer {
 		}
 
 		playlist.tracks.push({ id, title });
-		this.savePlaylists();
+		this.savePlaylistTracks(playlistId);
 		
 		// If it's the active playlist and it was empty, cue it
 		if (this.currentPlaylistId === playlistId && playlist.tracks.length === 1 && this.isReady && this.player) {
@@ -165,15 +181,15 @@ class YouTubePlayer {
 		return true;
 	}
 	
-	updateTrackTitle(playlistId: string, index: number, newTitle: string) {
+	async updateTrackTitle(playlistId: string, index: number, newTitle: string) {
 		const playlist = this.getPlaylist(playlistId);
 		if (playlist && index >= 0 && index < playlist.tracks.length) {
 			playlist.tracks[index].title = newTitle;
-			this.savePlaylists();
+			this.savePlaylistTracks(playlistId);
 		}
 	}
 
-	removeTrack(playlistId: string, index: number) {
+	async removeTrack(playlistId: string, index: number) {
 		const playlist = this.getPlaylist(playlistId);
 		if (!playlist) return;
 
@@ -192,7 +208,7 @@ class YouTubePlayer {
 				this.isPlaying = false;
 			}
 		}
-		this.savePlaylists();
+		this.savePlaylistTracks(playlistId);
 	}
 
 	// === PLAYBACK CONTROLS ===
@@ -251,41 +267,27 @@ class YouTubePlayer {
 		return (match && match[2].length === 11) ? match[2] : null;
 	}
 
-	private savePlaylists() {
-		if (browser) {
-			localStorage.setItem('fokuz_youtube_playlists_v2', JSON.stringify(this.playlists));
+	private async savePlaylistTracks(playlistId: string) {
+		if (!supabase) return;
+		const p = this.getPlaylist(playlistId);
+		if (p) {
+			await supabase.from('youtube_playlists').update({ tracks: p.tracks }).eq('id', playlistId);
 		}
 	}
 
-	private loadPlaylists() {
-		const v2 = localStorage.getItem('fokuz_youtube_playlists_v2');
-		if (v2) {
-			try {
-				this.playlists = JSON.parse(v2);
-				return;
-			} catch {
-				this.playlists = [];
-			}
-		}
+	private async loadPlaylists() {
+		if (!browser || !supabase) return;
+		const { data: { session } } = await supabase.auth.getSession();
+		if (!session) return;
 		
-		// Migration from v1
-		const v1 = localStorage.getItem('fokuz_youtube_playlist');
-		if (v1) {
-			try {
-				const oldPlaylist = JSON.parse(v1);
-				if (Array.isArray(oldPlaylist) && oldPlaylist.length > 0) {
-					this.playlists = [{
-						id: crypto.randomUUID(),
-						name: 'Mi Primera Playlist',
-						tracks: oldPlaylist
-					}];
-					this.savePlaylists();
-					return;
-				}
-			} catch {}
+		const { data, error } = await supabase
+			.from('youtube_playlists')
+			.select('id, name, tracks')
+			.order('created_at', { ascending: true });
+			
+		if (!error && data) {
+			this.playlists = data;
 		}
-		
-		this.playlists = [];
 	}
 }
 
