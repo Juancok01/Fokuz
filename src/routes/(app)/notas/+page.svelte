@@ -503,7 +503,7 @@
 							<Folder class="w-4 h-4 shrink-0 {activeFolderId === folder.id ? 'text-brand-accent' : 'text-brand-text-muted'}" />
 							<span class="truncate {activeFolderId === folder.id ? 'text-brand-text' : 'group-hover:text-brand-text'}">{folder.name}</span>
 						</div>
-						<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+						<div class="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
 							<button class="p-1 rounded text-brand-text-muted hover:text-brand-text hover:bg-brand-divider transition-colors" title="Editar carpeta" onclick={(e) => { e.stopPropagation(); openEditFolderModal(folder); }}>
 								<Edit2 class="w-3.5 h-3.5" />
 							</button>
@@ -524,7 +524,7 @@
 	</aside>
 
 	<!-- Middle Column (Lista de Notas) -->
-	<section class="w-full md:w-[380px] shrink-0 bg-[#0d1216] border-r border-brand-divider flex-col h-full z-20 transition-transform duration-300 md:translate-x-0 md:flex shadow-xl {showMobileList ? 'absolute inset-y-0 left-0 translate-x-0 flex' : 'absolute inset-y-0 left-0 -translate-x-full md:relative'}">
+	<section class="w-full md:w-96 shrink-0 bg-[#0d1216] border-r border-brand-divider flex-col h-full z-20 transition-transform duration-300 md:translate-x-0 md:flex shadow-xl {showMobileList ? 'absolute inset-y-0 left-0 translate-x-0 flex' : 'absolute inset-y-0 left-0 -translate-x-full md:relative'}">
 		<!-- Header -->
 		<div class="p-6 pb-4 shrink-0 bg-[#0d1216] z-10 sticky top-0">
 			<div class="flex items-center justify-between mb-6">
@@ -834,7 +834,7 @@
 						<button type="button" class="p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none flex items-center justify-center" title="Insertar Tabla (2x2)" onclick={() => {
 							if(quillInstance) {
 								const tableModule = quillInstance.getModule('table');
-								if(tableModule) tableModule.insertTable(2, 2);
+								if(tableModule) (tableModule as any).insertTable(2, 2);
 							}
 						}}>
 							<Table class="w-4 h-4" />
