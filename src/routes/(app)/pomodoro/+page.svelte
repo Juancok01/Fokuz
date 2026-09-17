@@ -170,7 +170,7 @@
 			</div>
 
 			<!-- Giant Timer -->
-			<div class="bg-[#0d1216] border border-brand-divider rounded-[2rem] p-8 flex flex-col items-center relative overflow-hidden shadow-2xl h-[420px]">
+			<div class="bg-[#0d1216] border border-brand-divider rounded-4xl p-8 flex flex-col items-center relative overflow-hidden shadow-2xl h-105">
 				<!-- Background glow -->
 				<div class="absolute inset-0 bg-brand-accent/5 radial-gradient-fade z-0"></div>
 				
@@ -282,43 +282,44 @@
 
 						<div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-48 overflow-y-auto custom-scrollbar pr-2">
 							{#each ytPlayer.playlists as playlist}
-								<div class="flex flex-col justify-between bg-[#070b0e] border {ytPlayer.currentPlaylistId === playlist.id ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-divider hover:border-brand-accent/50'} rounded-xl p-3 transition-colors cursor-pointer group" onclick={() => viewingPlaylistId = playlist.id}>
+								<div role="button" tabindex="0" class="flex flex-col justify-between bg-[#070b0e] border {ytPlayer.currentPlaylistId === playlist.id ? 'border-brand-accent bg-brand-accent/5' : 'border-brand-divider hover:border-brand-accent/50'} rounded-xl p-3 transition-colors cursor-pointer group text-left" onclick={() => viewingPlaylistId = playlist.id} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); viewingPlaylistId = playlist.id; } }}>
 									<div class="flex items-center justify-between mb-2">
 										<div class="flex items-center gap-2 min-w-0 flex-1">
 											<div class="w-8 h-8 rounded-lg {ytPlayer.currentPlaylistId === playlist.id ? 'bg-brand-accent/20 text-brand-accent' : 'bg-brand-surface text-brand-text-muted'} flex items-center justify-center shrink-0 border border-brand-divider">
 												<Music class="w-3.5 h-3.5" />
 											</div>
-											<div class="min-w-0 flex-1" onclick={(e) => e.stopPropagation()}>
+											<div class="min-w-0 flex-1">
 												{#if editPlaylistId === playlist.id}
 													<div class="flex items-center gap-1">
-														<input type="text" bind:value={editPlaylistName} class="bg-[#0d1216] border border-brand-divider rounded px-1.5 py-0.5 text-xs text-brand-text focus:outline-none focus:border-brand-accent w-full" onkeydown={(e) => { if (e.key === 'Enter') { ytPlayer.updatePlaylistName(playlist.id, editPlaylistName); editPlaylistId = null; } else if (e.key === 'Escape') editPlaylistId = null; }} autofocus />
-														<button class="text-brand-accent" onclick={() => { ytPlayer.updatePlaylistName(playlist.id, editPlaylistName); editPlaylistId = null; }}><Check class="w-3 h-3" /></button>
-														<button class="text-red-400" onclick={() => editPlaylistId = null}><X class="w-3 h-3" /></button>
+														<!-- svelte-ignore a11y_autofocus -->
+														<input type="text" bind:value={editPlaylistName} class="bg-[#0d1216] border border-brand-divider rounded px-1.5 py-0.5 text-xs text-brand-text focus:outline-none focus:border-brand-accent w-full" onclick={(e) => e.stopPropagation()} onkeydown={(e) => { e.stopPropagation(); if (e.key === 'Enter') { ytPlayer.updatePlaylistName(playlist.id, editPlaylistName); editPlaylistId = null; } else if (e.key === 'Escape') editPlaylistId = null; }} autofocus />
+														<button class="text-brand-accent" onclick={(e) => { e.stopPropagation(); ytPlayer.updatePlaylistName(playlist.id, editPlaylistName); editPlaylistId = null; }}><Check class="w-3 h-3" /></button>
+														<button class="text-red-400" onclick={(e) => { e.stopPropagation(); editPlaylistId = null; }}><X class="w-3 h-3" /></button>
 													</div>
 												{:else}
 													<h4 class="text-xs font-bold text-brand-text truncate">{playlist.name}</h4>
 												{/if}
 											</div>
 										</div>
-										<div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" onclick={(e) => e.stopPropagation()}>
-											<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-brand-accent transition-colors" onclick={() => { editPlaylistId = playlist.id; editPlaylistName = playlist.name; }}>
+										<div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+											<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-brand-accent transition-colors" onclick={(e) => { e.stopPropagation(); editPlaylistId = playlist.id; editPlaylistName = playlist.name; }}>
 												<Settings2 class="w-3.5 h-3.5" />
 											</button>
-											<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-red-400 transition-colors" onclick={() => ytPlayer.deletePlaylist(playlist.id)}>
+											<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-red-400 transition-colors" onclick={(e) => { e.stopPropagation(); ytPlayer.deletePlaylist(playlist.id); }}>
 												<Trash2 class="w-3.5 h-3.5" />
 											</button>
 										</div>
 									</div>
-									<p class="text-[10px] text-brand-text-muted flex items-center gap-1">
+									<div class="text-[10px] text-brand-text-muted flex items-center gap-1">
 										<ListChecks class="w-3 h-3" /> {playlist.tracks.length} pista(s)
 										{#if ytPlayer.currentPlaylistId === playlist.id && ytPlayer.isPlaying}
 											<span class="ml-auto flex gap-0.5 items-end h-2">
-												<div class="w-0.5 bg-brand-accent h-full animate-bounce [animation-delay:-0.3s]"></div>
-												<div class="w-0.5 bg-brand-accent h-2/3 animate-bounce [animation-delay:-0.15s]"></div>
-												<div class="w-0.5 bg-brand-accent h-1/2 animate-bounce"></div>
+												<span class="w-0.5 bg-brand-accent h-full animate-bounce delay-300 block" style="animation-direction: alternate;"></span>
+												<span class="w-0.5 bg-brand-accent h-2/3 animate-bounce delay-150 block" style="animation-direction: alternate;"></span>
+												<span class="w-0.5 bg-brand-accent h-1/2 animate-bounce block"></span>
 											</span>
 										{/if}
-									</p>
+									</div>
 								</div>
 							{/each}
 							{#if ytPlayer.playlists.length === 0}
@@ -361,6 +362,7 @@
 												<div class="min-w-0 flex-1">
 													{#if editTrackIndex === i}
 														<div class="flex items-center gap-2">
+															<!-- svelte-ignore a11y_autofocus -->
 															<input type="text" bind:value={editTrackTitle} class="bg-[#070b0e] border border-brand-divider rounded px-2 py-1 text-xs text-brand-text focus:outline-none focus:border-brand-accent w-full" onkeydown={(e) => { if (e.key === 'Enter') { ytPlayer.updateTrackTitle(viewingPlaylistId!, i, editTrackTitle); editTrackIndex = null; } else if (e.key === 'Escape') editTrackIndex = null; }} autofocus />
 															<button class="text-brand-accent hover:text-brand-accent/80" onclick={() => { ytPlayer.updateTrackTitle(viewingPlaylistId!, i, editTrackTitle); editTrackIndex = null; }}><Check class="w-3.5 h-3.5" /></button>
 															<button class="text-red-400 hover:text-red-500" onclick={() => editTrackIndex = null}><X class="w-3.5 h-3.5" /></button>
