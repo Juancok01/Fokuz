@@ -174,7 +174,7 @@
 				completedCount = rows.filter((t) => t.is_completed).length;
 			}
 
-			let habitsResult = habitsWithIcon;
+			let habitsResult: any = habitsWithIcon;
 			if (habitsResult.error && /icon/i.test(habitsResult.error.message)) {
 				habitsResult = await supabase
 					.from('habits')
@@ -190,7 +190,7 @@
 			} else {
 				const doneIds = new Set((logsResult.data ?? []).map((row) => row.habit_id));
 				todayHabits = (habitsResult.data ?? [])
-					.map((h, i) => {
+					.map((h: any, i: number) => {
 						const mockTags = ['Vitalidad', 'Espiritual', 'Planificación', 'Desarrollo'];
 						const tag = mockTags[i % mockTags.length];
 						const streak = Math.floor(Math.random() * 30) + 1;
@@ -204,7 +204,7 @@
 							tag
 						};
 					})
-					.filter((h) => habitIsScheduledOn(h, weekday));
+					.filter((h: any) => habitIsScheduledOn(h, weekday));
 			}
 		} catch (err) {
 			console.warn('Error inesperado al cargar Inicio:', err);

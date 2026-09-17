@@ -65,7 +65,7 @@
 
 	async function loadContacts() {
 		if (!supabase) return;
-		let rowsResult = await supabase
+		let rowsResult: any = await supabase
 			.from('contacts')
 			.select('contact_user_id, nickname')
 			.order('created_at', { ascending: false });
@@ -80,14 +80,14 @@
 		const rows = rowsResult.data || [];
 		if (rows.length === 0) return;
 
-		const ids = rows.map((r) => r.contact_user_id);
+		const ids = rows.map((r: any) => r.contact_user_id);
 		const { data: profiles } = await supabase
 			.from('profiles')
 			.select('id, email, display_name')
 			.in('id', ids);
 
-		const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-		contacts = rows.map((row) => {
+		const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+		contacts = rows.map((row: any) => {
 			const profile = profileMap.get(row.contact_user_id);
 			return {
 				id: row.contact_user_id,
