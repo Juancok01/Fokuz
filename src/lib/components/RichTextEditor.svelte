@@ -1,31 +1,34 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import 'quill/dist/quill.snow.css';
+	import { onMount, onDestroy } from "svelte";
+	import "quill/dist/quill.snow.css";
 
-	let { value = $bindable(), placeholder = 'Agrega una descripción más detallada...' } = $props();
+	let {
+		value = $bindable(),
+		placeholder = "Agrega una descripción más detallada...",
+	} = $props();
 
 	let editorContainer: HTMLElement;
 	let quill: any;
 
 	onMount(async () => {
-		const { default: Quill } = await import('quill');
+		const { default: Quill } = await import("quill");
 		quill = new Quill(editorContainer, {
-			theme: 'snow',
+			theme: "snow",
 			placeholder,
 			modules: {
 				toolbar: [
-					['bold', 'italic', 'underline', 'strike'],
-					[{ list: 'ordered' }, { list: 'bullet' }],
-					['clean']
-				]
-			}
+					["bold", "italic", "underline", "strike"],
+					[{ list: "ordered" }, { list: "bullet" }],
+					["clean"],
+				],
+			},
 		});
 
 		if (value) {
 			quill.clipboard.dangerouslyPasteHTML(value);
 		}
 
-		quill.on('text-change', () => {
+		quill.on("text-change", () => {
 			value = quill.root.innerHTML;
 		});
 	});
@@ -40,13 +43,18 @@
 
 	onDestroy(() => {
 		if (quill) {
-			quill.off('text-change');
+			quill.off("text-change");
 		}
 	});
 </script>
 
-<div class="rich-text-wrapper rounded-xl border border-brand-divider bg-[#0d1216] overflow-hidden focus-within:border-brand-accent transition-colors">
-	<div bind:this={editorContainer} class="min-h-[120px] max-h-[300px] overflow-y-auto text-brand-text"></div>
+<div
+	class="rich-text-wrapper rounded-xl border border-brand-divider bg-[#0d1216] overflow-hidden focus-within:border-brand-accent transition-colors"
+>
+	<div
+		bind:this={editorContainer}
+		class="min-h-30 max-h-75 overflow-y-auto text-brand-text"
+	></div>
 </div>
 
 <style>
