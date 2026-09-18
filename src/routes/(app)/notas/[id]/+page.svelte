@@ -7,7 +7,6 @@
 	import 'highlight.js/styles/atom-one-dark.css';
 	import {
 		fetchNote,
-		fetchSubnotes,
 		createNote,
 		updateNote,
 		deleteNote,
@@ -27,7 +26,6 @@
 	const isNew = $derived(id === 'nueva');
 
 	let note = $state<Partial<Note>>({ title: '', content: '' });
-	let subnotes = $state<Note[]>([]);
 	let loading = $state(true);
 	let saving = $state(false);
 	let errorMsg = $state('');
@@ -54,7 +52,6 @@
 
 		if (isNew) {
 			note = { title: '', content: '', parent_id: parentId };
-			subnotes = [];
 			loading = false;
 			return;
 		}
@@ -62,14 +59,12 @@
 		loading = true;
 		errorMsg = '';
 		try {
-			const [n, subs, shares, myContacts] = await Promise.all([
+			const [n, shares, myContacts] = await Promise.all([
 				fetchNote(id), 
-				fetchSubnotes(id),
 				fetchNoteShares(id),
 				fetchMyContacts()
 			]);
 			note = n;
-			subnotes = subs;
 			sharedWithIds = new Set(shares);
 			contacts = myContacts;
 
@@ -193,7 +188,7 @@
 								showTableModal = true;
 							},
 							'table-delete': function() {
-								this.quill.getModule('table').deleteTable();
+								quill.getModule('table').deleteTable();
 							}
 						}
 					}
@@ -295,46 +290,6 @@
 			<div class="w-full flex-1 min-h-[200px] mt-2 relative quill-wrapper">
 				<div use:quillAction class="w-full h-full text-brand-text max-w-none" lang="es" spellcheck="true"></div>
 			</div>
-			
-			{#if !isNew}
-				<div class="pt-6 border-t border-brand-divider mt-auto">
-					<div class="flex items-center justify-between mb-4">
-						<h3 class="font-bold text-brand-text text-sm uppercase tracking-wider">Subnotas</h3>
-						<button
-							type="button"
-							class="text-xs font-bold text-brand-accent bg-brand-accent/10 px-3 py-1.5 rounded-lg hover:bg-brand-accent/20 transition-colors flex items-center gap-1"
-							onclick={() => goto(`/notas/nueva?parent_id=${id}`)}
-						>
-							<Plus class="w-3 h-3" />
-							Crear Subnota
-						</button>
-					</div>
-
-					{#if subnotes.length === 0}
-						<div class="text-center py-6 border border-dashed border-brand-divider rounded-xl">
-							<p class="text-sm text-brand-text-muted">No hay subnotas.</p>
-						</div>
-					{:else}
-						<div class="grid gap-2">
-							{#each subnotes as subnote (subnote.id)}
-								<button
-									type="button"
-									class="text-left bg-brand-surface rounded-xl p-3 border border-brand-divider hover:border-brand-accent/50 transition-colors flex flex-col gap-1 relative group"
-									onclick={() => goto(`/notas/${subnote.id}`)}
-								>
-									<div class="flex items-center justify-between w-full">
-										<div class="flex items-center gap-2">
-											<StickyNote class="w-4 h-4 text-brand-text-muted" />
-											<h4 class="font-bold text-brand-text text-sm truncate pr-4">{subnote.title || 'Sin título'}</h4>
-										</div>
-										<ChevronRight class="w-4 h-4 text-brand-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
-									</div>
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-			{/if}
 		</div>
 	{/if}
 </div>
@@ -342,7 +297,7 @@
 <ConfirmModal 
 	isOpen={showDeleteConfirm}
 	title="Eliminar Nota"
-	message="¿Estás seguro de eliminar esta nota? También se eliminarán TODAS sus subnotas permanentemente."
+	message="¿Estás seguro de eliminar esta nota? Esta acción no se puede deshacer."
 	confirmText="Sí, eliminar"
 	onConfirm={handleDeleteConfirm}
 	onCancel={() => showDeleteConfirm = false}
@@ -475,12 +430,88 @@
 	:global(.ql-editor h3) { font-size: 1.25rem; }
 	:global(.ql-editor p) { margin-bottom: 1em; }
 	:global(.ql-editor ul), :global(.ql-editor ol) { padding-left: 1.5rem; margin-bottom: 1em; }
-	:global(.ql-editor pre.ql-syntax) {
-		background-color: #18181b;
-		color: #e4e4e7;
-		padding: 1rem;
-		border-radius: 0.5rem;
-		overflow-x: auto;
+	/* Bloques de código enriquecidos (Estilo Mac) para Quill 2 */
+	:global(.ql-snow .ql-editor pre.ql-syntax),
+	:global(.ql-snow .ql-editor .ql-code-block-container) {
+		background-color: #090e11 !important; /* Más oscuro para resaltar */
+		color: #e4e4e7 !important;
+		padding: 3.5rem 1.5rem 1.5rem 1.5rem !important;
+		border-radius: 0.75rem !important;
+		border: 1px solid rgba(255, 255, 255, 0.05) !important;
+		font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace !important;
+		font-size: 0.85rem !important;
+		line-height: 1.6 !important;
+		position: relative !important;
+		margin-top: 1.5rem !important;
+		margin-bottom: 1.5rem !important;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.4) !important;
+		overflow: visible !important;
+	}
+
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-code-block) {
+		background-color: transparent !important;
+		color: inherit !important;
+		padding: 0 !important;
+		border: none !important;
+		margin: 0 !important;
+		font-family: inherit !important;
+	}
+
+	/* Botones Mac en el bloque de código */
+	:global(.ql-snow .ql-editor pre.ql-syntax::before),
+	:global(.ql-snow .ql-editor .ql-code-block-container::before) {
+		content: '' !important;
+		position: absolute !important;
+		top: 1.2rem !important;
+		left: 1.25rem !important;
+		width: 0.75rem !important;
+		height: 0.75rem !important;
+		border-radius: 50% !important;
+		background: #ff5f56 !important;
+		box-shadow: 1.25rem 0 0 #ffbd2e, 2.5rem 0 0 #27c93f !important;
+		z-index: 2 !important;
+	}
+
+	/* Barra superior del bloque de código (estético) */
+	:global(.ql-snow .ql-editor pre.ql-syntax::after),
+	:global(.ql-snow .ql-editor .ql-code-block-container::after) {
+		content: '' !important;
+		position: absolute !important;
+		top: 0 !important;
+		left: 0 !important;
+		right: 0 !important;
+		height: 3rem !important;
+		background: rgba(255, 255, 255, 0.02) !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+		border-top-left-radius: 0.75rem !important;
+		border-top-right-radius: 0.75rem !important;
+		pointer-events: none !important;
+		z-index: 1 !important;
+	}
+
+	/* Mejorar el dropdown del lenguaje de Quill */
+	:global(.ql-snow .ql-editor pre.ql-syntax .ql-ui),
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-ui) {
+		position: absolute !important;
+		top: 0.65rem !important;
+		right: 1rem !important;
+		background-color: rgba(255, 255, 255, 0.05) !important;
+		color: var(--color-brand-text-muted) !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		border-radius: 0.5rem !important;
+		font-size: 0.75rem !important;
+		font-weight: 700 !important;
+		cursor: pointer !important;
+		padding: 0.3rem 0.75rem !important;
+		transition: all 0.2s ease !important;
+		z-index: 10 !important;
+	}
+
+	:global(.ql-snow .ql-editor pre.ql-syntax .ql-ui:hover),
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-ui:hover) {
+		color: var(--color-brand-text) !important;
+		background-color: rgba(255, 255, 255, 0.1) !important;
+		border-color: var(--color-brand-accent) !important;
 	}
 	:global(.ql-editor table) {
 		width: 100%;
