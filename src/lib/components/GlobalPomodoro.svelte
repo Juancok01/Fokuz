@@ -586,9 +586,11 @@
 			<button class="p-2 hover:text-brand-text hover:bg-brand-surface-elevated rounded-full transition-colors" onclick={() => ytPlayer.next()} title="Siguiente pista">
 				<SkipForward class="w-3.5 h-3.5" />
 			</button>
-			<div class="flex items-center gap-1.5 ml-1 mr-1 group relative">
-				<Volume2 class="w-3.5 h-3.5 text-brand-text-muted" />
-				<input type="range" min="0" max="100" value={ytPlayer.volume} oninput={(e) => ytPlayer.setVolume(Number(e.currentTarget.value))} class="w-12 md:w-16 accent-brand-accent h-1 bg-brand-divider rounded-lg appearance-none opacity-0 group-hover:opacity-100 transition-opacity absolute left-6 origin-left scale-x-0 group-hover:scale-x-100" />
+			<div class="flex items-center group cursor-pointer hover:bg-brand-surface-elevated rounded-full p-1.5 transition-all ml-1">
+				<Volume2 class="w-3.5 h-3.5 text-brand-text-muted group-hover:text-brand-text shrink-0" />
+				<div class="w-0 overflow-hidden group-hover:w-16 transition-all duration-300 ease-in-out flex items-center">
+					<input type="range" min="0" max="100" value={ytPlayer.volume} oninput={(e) => ytPlayer.setVolume(Number(e.currentTarget.value))} class="w-14 ml-1.5 accent-brand-accent h-1 bg-brand-divider rounded-lg appearance-none" />
+				</div>
 			</div>
 		</div>
 
