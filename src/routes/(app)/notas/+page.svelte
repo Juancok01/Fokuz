@@ -38,6 +38,7 @@
 	import { goto } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
 	import { onMount, onDestroy } from "svelte";
+	import { pomodoroUI } from '$lib/pomodoro.svelte';
 
 	// Quill (imported dynamically to avoid SSR errors)
 	import type Quill from "quill";
@@ -1133,7 +1134,7 @@
 			<div class="flex items-center gap-3">
 				<button
 					class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-divider bg-[#0d1216] text-[11px] font-bold text-brand-text hover:border-brand-accent transition-colors shadow-inner"
-					onclick={() => goto("/pomodoro")}
+					onclick={() => pomodoroUI.isMaximized = true}
 				>
 					<Timer class="w-3.5 h-3.5 text-brand-accent" /> Foco Pomodoro
 				</button>

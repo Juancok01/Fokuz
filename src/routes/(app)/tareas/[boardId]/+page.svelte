@@ -13,7 +13,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import DateTimePicker from '$lib/components/DateTimePicker.svelte';
 	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
-	import { linkPomodoroTask } from '$lib/pomodoro.svelte';
+	import { linkPomodoroTask, pomodoroUI } from '$lib/pomodoro.svelte';
 
 	type TaskTag = { id: number; name: string; color: string };
 	type Contact = {
@@ -1643,7 +1643,7 @@
 		linkPomodoroTask(selectedTaskId, selectedTaskTitle || 'Tarea');
 		showTaskOptions = false;
 		showTaskUpdate = false;
-		goto('/pomodoro');
+		pomodoroUI.isMaximized = true;
 	};
 
 

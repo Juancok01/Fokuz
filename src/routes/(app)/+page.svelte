@@ -16,6 +16,7 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
+	import { pomodoroUI } from '$lib/pomodoro.svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
 	import HabitIcon from '$lib/components/HabitIcon.svelte';
 	import {
@@ -518,12 +519,12 @@
 				<p class="text-[11px] text-brand-text-muted mb-8 relative z-10">Tiempo de lectura o introspección</p>
 				
 				<div class="w-full flex gap-3 relative z-10">
-					<a href="/pomodoro" class="flex-[1.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3 rounded-xl hover:bg-brand-surface-elevated transition-colors">
+					<button onclick={() => pomodoroUI.isMaximized = true} class="flex-[1.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3 rounded-xl hover:bg-brand-surface-elevated transition-colors">
 						<Play class="w-4 h-4 fill-brand-text" /> Iniciar
-					</a>
-					<a href="/pomodoro" class="flex-1 flex items-center justify-center gap-2 bg-transparent border border-brand-divider text-brand-text-muted font-bold py-3 rounded-xl hover:text-brand-text hover:bg-brand-surface-elevated transition-colors">
+					</button>
+					<button onclick={() => pomodoroUI.isMaximized = true} class="flex-1 flex items-center justify-center gap-2 bg-transparent border border-brand-divider text-brand-text-muted font-bold py-3 rounded-xl hover:text-brand-text hover:bg-brand-surface-elevated transition-colors">
 						Ajustar
-					</a>
+					</button>
 				</div>
 			</section>
 		</div>
