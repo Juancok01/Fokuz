@@ -90,6 +90,21 @@
 		(pomodoro.running || pomodoro.awaitingAck || (pomodoro.remainingMs < (pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS)))
 	);
 
+	// The alarm audio is handled directly in the DOM
+	let audioAlarm: HTMLAudioElement;
+
+	$effect(() => {
+		if (audioAlarm) {
+			if (pomodoro.awaitingAck && audioAlarm.paused) {
+				audioAlarm.currentTime = 0;
+				const p = audioAlarm.play();
+				if (p) p.catch(() => {});
+			} else if (!pomodoro.awaitingAck && !audioAlarm.paused) {
+				audioAlarm.pause();
+			}
+		}
+	});
+
 </script>
 
 <!-- The audio and youtube container MUST always be in the DOM to keep playing -->
@@ -97,6 +112,7 @@
 <audio bind:this={audioRain} loop src="https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg" crossorigin="anonymous"></audio>
 <audio bind:this={audioBrown} loop src="https://upload.wikimedia.org/wikipedia/commons/4/47/Wind_in_forest_%28Gravity_Sound%29.wav" crossorigin="anonymous"></audio>
 <audio bind:this={audioFire} loop src="https://actions.google.com/sounds/v1/ambiences/fire.ogg" crossorigin="anonymous"></audio>
+<audio bind:this={audioAlarm} loop src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" crossorigin="anonymous"></audio>
 
 {#if pomodoroUI.isMaximized}
 	<div class="absolute inset-0 z-40 bg-[#070b0e] flex flex-col animate-in fade-in zoom-in-95 duration-200">
