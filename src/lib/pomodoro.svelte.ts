@@ -32,48 +32,12 @@ export const pomodoroUI = $state({
 
 let endsAt: number | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
-let alarmTimer: ReturnType<typeof setInterval> | null = null;
 
 const clearTick = () => {
 	if (tickTimer != null) {
 		clearInterval(tickTimer);
 		tickTimer = null;
 	}
-};
-
-const clearAlarm = () => {
-	if (alarmTimer != null) {
-		clearInterval(alarmTimer);
-		alarmTimer = null;
-	}
-};
-
-const playChime = () => {
-	try {
-		const Ctx =
-			window.AudioContext ||
-			(window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-		const ctx = new Ctx();
-		const osc = ctx.createOscillator();
-		const gain = ctx.createGain();
-		osc.type = 'sine';
-		osc.frequency.value = 880;
-		gain.gain.value = 0.08;
-		osc.connect(gain);
-		gain.connect(ctx.destination);
-		osc.start();
-		gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
-		osc.stop(ctx.currentTime + 0.4);
-		osc.onended = () => ctx.close();
-	} catch {
-		/* sin audio disponible */
-	}
-};
-
-const startAlarm = () => {
-	clearAlarm();
-	playChime();
-	alarmTimer = setInterval(playChime, 1100);
 };
 
 const completePhase = () => {
@@ -83,7 +47,6 @@ const completePhase = () => {
 	pomodoro.remainingMs = 0;
 	pomodoro.awaitingAck = true;
 	ytPlayer.pause();
-	startAlarm();
 };
 
 const syncRemaining = () => {
@@ -102,6 +65,7 @@ export const formatPomodoroTime = (ms: number = pomodoro.remainingMs) => {
 
 export const startPomodoro = () => {
 	if (pomodoro.running || pomodoro.awaitingAck) return;
+	
 	if (pomodoro.remainingMs <= 0) {
 		pomodoro.remainingMs = pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS;
 	}
@@ -128,7 +92,6 @@ export const pausePomodoro = () => {
 export const acknowledgePomodoro = () => {
 	if (!pomodoro.awaitingAck) return;
 
-	clearAlarm();
 	pomodoro.awaitingAck = false;
 	pomodoro.running = false;
 	endsAt = null;
@@ -144,11 +107,13 @@ export const acknowledgePomodoro = () => {
 		pomodoro.phase = 'focus';
 		pomodoro.remainingMs = FOCUS_MS;
 	}
+	
+	// Auto-start the next phase immediately after acknowledging
+	startPomodoro();
 };
 
 export const resetPomodoro = () => {
 	clearTick();
-	clearAlarm();
 	pomodoro.running = false;
 	pomodoro.awaitingAck = false;
 	endsAt = null;
@@ -159,7 +124,6 @@ export const resetPomodoro = () => {
 export const setPomodoroPhase = (phase: PomodoroPhase) => {
 	if (pomodoro.running || pomodoro.awaitingAck) return;
 	clearTick();
-	clearAlarm();
 	pomodoro.running = false;
 	pomodoro.awaitingAck = false;
 	endsAt = null;
