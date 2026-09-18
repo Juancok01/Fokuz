@@ -110,6 +110,10 @@
 	let newNoteTitle = $state("");
 	let isCreatingNote = $state(false);
 
+	let showTableModal = $state(false);
+	let tableRows = $state(2);
+	let tableCols = $state(2);
+
 	type Contact = {
 		id: string;
 		email: string;
@@ -141,6 +145,14 @@
 	];
 
 	let currentTime = $state(Date.now());
+
+	let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	function scheduleAutoSave() {
+		if (autoSaveTimer) clearTimeout(autoSaveTimer);
+		autoSaveTimer = setTimeout(() => {
+			saveActiveNote();
+		}, 30000); // Autoguardado a los 30 segundos
+	}
 
 	onMount(() => {
 		const interval = setInterval(() => (currentTime = Date.now()), 60000);
@@ -176,6 +188,7 @@
 				const index = notes.findIndex((n) => n.id === activeNote.id);
 				if (index !== -1) {
 					notes[index].excerpt = quillInstance!.root.innerHTML;
+					scheduleAutoSave();
 				}
 			});
 
@@ -272,15 +285,15 @@
 	}
 
 	let lastEditedText = $derived.by(() => {
-		if (!activeNote || !activeNote.last_edited_at) return "Sin editar";
-		const diff = currentTime - activeNote.last_edited_at;
-		if (diff < 60000) return "Editada justo ahora";
-		const min = Math.floor(diff / 60000);
-		if (min < 60)
-			return `Editada hace ${min} minuto${min !== 1 ? "s" : ""}`;
-		const hr = Math.floor(min / 3600000);
-		if (hr < 24) return `Editada hace ${hr} hora${hr !== 1 ? "s" : ""}`;
-		return "Editada hace mucho";
+		if (!activeNote || !activeNote.last_edited_at) return "Aún no guardada";
+		const date = new Date(activeNote.last_edited_at);
+		const today = new Date();
+		const isToday = date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear();
+		const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+		if (isToday) {
+			return `Guardada hoy a las ${timeString}`;
+		}
+		return `Guardada el ${date.toLocaleDateString()} a las ${timeString}`;
 	});
 
 	async function loadFolders() {
@@ -570,6 +583,7 @@
 		const index = notes.findIndex((n) => n.id === activeNote.id);
 		if (index !== -1) {
 			notes[index].title = target.textContent || "Sin título";
+			scheduleAutoSave();
 		}
 	}
 </script>
@@ -939,12 +953,7 @@
 
 			<!-- Normal Section -->
 			{#if filteredNotes.filter((n) => !n.pinned).length > 0}
-				<h3
-					class="flex items-center gap-2 text-[10px] font-bold text-brand-text-muted tracking-widest uppercase mb-3 px-2"
-				>
-					SEPTIEMBRE & AGOSTO 2026
-				</h3>
-				<div class="space-y-3">
+				<div class="space-y-3 mt-4">
 					{#each filteredNotes.filter((n) => !n.pinned) as note}
 						<button
 							class="w-full text-left bg-[#070b0e] rounded-xl {viewMode ===
@@ -1083,12 +1092,7 @@
 		<div
 			class="p-3 bg-[#0d1216] border-t border-brand-divider text-[10px] font-medium text-brand-text-muted flex items-center justify-between z-10 sticky bottom-0"
 		>
-			<span>Mostrando {filteredNotes.length} de {notes.length} notas</span
-			>
-			<span class="flex items-center gap-1.5"
-				><span class="w-1.5 h-1.5 rounded-full bg-brand-accent"></span> Sincronizado
-				12:42</span
-			>
+			<span>Mostrando {filteredNotes.length} de {notes.length} notas</span>
 		</div>
 	</section>
 
@@ -1324,20 +1328,27 @@
 							<button
 								type="button"
 								class="p-2 rounded-lg text-brand-text hover:bg-brand-surface transition-colors focus:outline-none flex items-center justify-center"
-								title="Insertar Tabla (2x2)"
+								title="Insertar Tabla"
 								onclick={() => {
-									if (quillInstance) {
-										const tableModule =
-											quillInstance.getModule("table");
-										if (tableModule)
-											(tableModule as any).insertTable(
-												2,
-												2,
-											);
-									}
+									showTableModal = true;
+									tableRows = 2;
+									tableCols = 2;
 								}}
 							>
 								<Table class="w-4 h-4" />
+							</button>
+							<button
+								type="button"
+								class="p-2 rounded-lg text-brand-text hover:bg-red-400/10 hover:text-red-400 transition-colors focus:outline-none flex items-center justify-center"
+								title="Eliminar Tabla"
+								onclick={() => {
+									if (quillInstance) {
+										const tableModule = quillInstance.getModule("table");
+										if (tableModule) (tableModule as any).deleteTable();
+									}
+								}}
+							>
+								<Trash2 class="w-4 h-4" />
 							</button>
 						</div>
 						<div class="flex items-center gap-1 pl-2">
@@ -1747,19 +1758,48 @@
 	</div>
 {/if}
 
+<!-- Modal Crear Tabla -->
+{#if showTableModal}
+	<div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+		<div class="bg-[#070b0e] border border-brand-divider rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+			<h3 class="text-xl font-bold text-brand-text mb-4">Crear Tabla</h3>
+			
+			<div class="flex gap-4 mb-6">
+				<div class="flex-1">
+					<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Filas</label>
+					<input type="number" min="1" max="20" bind:value={tableRows} class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-sm font-semibold text-brand-text focus:outline-none focus:border-brand-accent transition-colors shadow-inner" />
+				</div>
+				<div class="flex-1">
+					<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Columnas</label>
+					<input type="number" min="1" max="20" bind:value={tableCols} class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-sm font-semibold text-brand-text focus:outline-none focus:border-brand-accent transition-colors shadow-inner" />
+				</div>
+			</div>
+
+			<div class="flex gap-3">
+				<button class="flex-1 py-3 rounded-xl font-bold text-sm text-brand-text-muted hover:text-brand-text transition-colors" onclick={() => showTableModal = false}>
+					Cancelar
+				</button>
+				<button class="flex-1 py-3 rounded-xl font-bold text-sm text-brand-bg bg-brand-accent hover:brightness-110 transition-colors shadow-[0_0_15px_var(--color-brand-accent-muted)] flex items-center justify-center" onclick={() => {
+					if (quillInstance) {
+						const tableModule = quillInstance.getModule("table");
+						if (tableModule) (tableModule as any).insertTable(tableRows, tableCols);
+					}
+					showTableModal = false;
+				}}>
+					Insertar
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	/* Restaurar estilos de lista nativos de Quill 2 que Tailwind elimina por defecto */
 	:global(.ql-editor ul) {
-		list-style-type: disc !important;
 		padding-left: 1.5rem !important;
 	}
 	:global(.ql-editor ol) {
-		list-style-type: decimal !important;
 		padding-left: 1.5rem !important;
-	}
-	:global(.ql-editor ul > li),
-	:global(.ql-editor ol > li) {
-		list-style-type: inherit !important;
 	}
 	/* Evitar que los checklists tengan viñeta y cuadrito a la vez */
 	:global(.ql-editor li[data-list="checked"]),
@@ -1775,5 +1815,89 @@
 	}
 	:global(.ql-editor table td, .ql-editor table th) {
 		border-color: var(--color-brand-divider) !important;
+	}
+
+	/* Bloques de código enriquecidos (Estilo Mac) para Quill 2 */
+	:global(.ql-snow .ql-editor pre.ql-syntax),
+	:global(.ql-snow .ql-editor .ql-code-block-container) {
+		background-color: #090e11 !important; /* Más oscuro para resaltar */
+		color: #e4e4e7 !important;
+		padding: 3.5rem 1.5rem 1.5rem 1.5rem !important;
+		border-radius: 0.75rem !important;
+		border: 1px solid rgba(255, 255, 255, 0.05) !important;
+		font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace !important;
+		font-size: 0.85rem !important;
+		line-height: 1.6 !important;
+		position: relative !important;
+		margin-top: 1.5rem !important;
+		margin-bottom: 1.5rem !important;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.4) !important;
+		overflow: visible !important; /* Permitir que el dropdown se vea si sobresale */
+	}
+
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-code-block) {
+		background-color: transparent !important;
+		color: inherit !important;
+		padding: 0 !important;
+		border: none !important;
+		margin: 0 !important;
+		font-family: inherit !important;
+	}
+
+	/* Botones Mac en el bloque de código */
+	:global(.ql-snow .ql-editor pre.ql-syntax::before),
+	:global(.ql-snow .ql-editor .ql-code-block-container::before) {
+		content: '' !important;
+		position: absolute !important;
+		top: 1.2rem !important;
+		left: 1.25rem !important;
+		width: 0.75rem !important;
+		height: 0.75rem !important;
+		border-radius: 50% !important;
+		background: #ff5f56 !important;
+		box-shadow: 1.25rem 0 0 #ffbd2e, 2.5rem 0 0 #27c93f !important;
+		z-index: 2 !important;
+	}
+
+	/* Barra superior del bloque de código (estético) */
+	:global(.ql-snow .ql-editor pre.ql-syntax::after),
+	:global(.ql-snow .ql-editor .ql-code-block-container::after) {
+		content: '' !important;
+		position: absolute !important;
+		top: 0 !important;
+		left: 0 !important;
+		right: 0 !important;
+		height: 3rem !important;
+		background: rgba(255, 255, 255, 0.02) !important;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+		border-top-left-radius: 0.75rem !important;
+		border-top-right-radius: 0.75rem !important;
+		pointer-events: none !important;
+		z-index: 1 !important;
+	}
+
+	/* Mejorar el dropdown del lenguaje de Quill */
+	:global(.ql-snow .ql-editor pre.ql-syntax .ql-ui),
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-ui) {
+		position: absolute !important;
+		top: 0.65rem !important;
+		right: 1rem !important;
+		background-color: rgba(255, 255, 255, 0.05) !important;
+		color: var(--color-brand-text-muted) !important;
+		border: 1px solid rgba(255, 255, 255, 0.1) !important;
+		border-radius: 0.5rem !important;
+		font-size: 0.75rem !important;
+		font-weight: 700 !important;
+		cursor: pointer !important;
+		padding: 0.3rem 0.75rem !important;
+		transition: all 0.2s ease !important;
+		z-index: 10 !important;
+	}
+
+	:global(.ql-snow .ql-editor pre.ql-syntax .ql-ui:hover),
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-ui:hover) {
+		color: var(--color-brand-text) !important;
+		background-color: rgba(255, 255, 255, 0.1) !important;
+		border-color: var(--color-brand-accent) !important;
 	}
 </style>

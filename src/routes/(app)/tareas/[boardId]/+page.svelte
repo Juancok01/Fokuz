@@ -149,6 +149,15 @@
 	let subtaskTitle = $state('');
 	let taskComments = $state<any[]>([]);
 	let newCommentText = $state('');
+	let selectedTaskLinkedNoteId = $state<string | null>(null);
+	let selectedTaskLinkedNoteTitle = $state<string | null>(null);
+
+	// Estado para modal de vincular nota
+	let showLinkNoteModal = $state(false);
+	let linkableFolders = $state<any[]>([]);
+	let linkableNotes = $state<any[]>([]);
+	let linkNotesLoading = $state(false);
+	let linkModalSearchQuery = $state('');
 	
 	let subtasks = $derived(
 		tasks.filter(t => t.parent_task_id === selectedTaskId)
@@ -850,6 +859,53 @@
 	const listsTableMissing = (message: string) =>
 		/task_lists|task_list_items|schema cache|does not exist/i.test(message);
 
+	const openLinkNoteModal = async () => {
+		showLinkNoteModal = true;
+		linkNotesLoading = true;
+		if (supabase) {
+			const [foldersRes, notesRes] = await Promise.all([
+				supabase.from('note_folders').select('id, name').order('created_at', { ascending: true }),
+				supabase.from('notes').select('id, folder_id, title').order('updated_at', { ascending: false })
+			]);
+			linkableFolders = foldersRes.data || [];
+			linkableNotes = notesRes.data || [];
+		}
+		linkNotesLoading = false;
+	};
+
+	const linkNoteToTask = async (note: any) => {
+		if (!selectedTaskId || !supabase) return;
+		const { error } = await supabase.from('tasks').update({ linked_note_id: note.id }).eq('id', selectedTaskId);
+		if (!error) {
+			selectedTaskLinkedNoteId = note.id;
+			selectedTaskLinkedNoteTitle = note.title;
+			showLinkNoteModal = false;
+			const t = tasks.find(x => x.id === selectedTaskId);
+			if (t) t.linked_note_id = note.id;
+			taskActionSuccess = 'Nota vinculada correctamente';
+			setTimeout(() => taskActionSuccess = '', 3000);
+		} else {
+			taskActionError = error.message.includes('linked_note_id') 
+				? "Falta crear la columna 'linked_note_id' tipo UUID en la tabla tasks en Supabase." 
+				: error.message;
+		}
+	};
+
+	const unlinkNoteFromTask = async () => {
+		if (!selectedTaskId || !supabase) return;
+		const { error } = await supabase.from('tasks').update({ linked_note_id: null }).eq('id', selectedTaskId);
+		if (!error) {
+			selectedTaskLinkedNoteId = null;
+			selectedTaskLinkedNoteTitle = null;
+			const t = tasks.find(x => x.id === selectedTaskId);
+			if (t) t.linked_note_id = null;
+			taskActionSuccess = 'Nota desvinculada';
+			setTimeout(() => taskActionSuccess = '', 3000);
+		} else {
+			taskActionError = error.message;
+		}
+	};
+
 	const loadTaskLists = async (taskId: number) => {
 		taskLists = [];
 		if (!supabase) return;
@@ -992,6 +1048,14 @@
 			selectedTaskTitle = task.title || '';
 			editingNovedad = task.novedad || '';
 			editingDescription = task.description || '';
+			
+			selectedTaskLinkedNoteId = task.linked_note_id || null;
+			selectedTaskLinkedNoteTitle = null;
+			if (selectedTaskLinkedNoteId && supabase) {
+				const { data } = await supabase.from('notes').select('title').eq('id', selectedTaskLinkedNoteId).single();
+				if (data) selectedTaskLinkedNoteTitle = data.title;
+			}
+
 			editingDate = '';
 			if (task.date) {
 				try { editingDate = new Date(task.date).toISOString().slice(0, 16); } catch (e) {}
@@ -2564,11 +2628,30 @@
 					<div class="rounded-xl border border-brand-divider bg-[#0d1216] p-5">
 						<h4 class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2 mb-4"><Activity class="w-4 h-4 text-brand-accent" /> Vinculaciones Fokuz</h4>
 						<button 
-							class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-brand-accent/50 text-brand-accent hover:bg-brand-accent/10 transition-colors text-[11px] font-bold"
+							class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-brand-accent/50 text-brand-accent hover:bg-brand-accent/10 transition-colors text-[11px] font-bold mb-3"
 							onclick={focusOnSelectedTask}
 						>
 							<Clock class="w-3.5 h-3.5" /> Enfocar con Pomodoro
 						</button>
+
+						{#if selectedTaskLinkedNoteId}
+							<div class="flex flex-col gap-2 p-3 rounded-lg border border-brand-divider bg-[#070b0e]">
+								<div class="flex items-center justify-between mb-1">
+									<span class="text-[10px] font-bold text-brand-text-muted uppercase">Nota Vinculada</span>
+									<button class="text-brand-text-muted hover:text-red-400 transition-colors" onclick={unlinkNoteFromTask} title="Desvincular"><X class="w-3.5 h-3.5" /></button>
+								</div>
+								<button class="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-brand-accent text-brand-bg hover:brightness-110 transition-all text-[11px] font-bold shadow-[0_0_10px_var(--color-brand-accent-muted)]" onclick={() => goto(`/notas/${selectedTaskLinkedNoteId}`)}>
+									<StickyNote class="w-3.5 h-3.5" /> {selectedTaskLinkedNoteTitle || 'Ver Nota'}
+								</button>
+							</div>
+						{:else}
+							<button 
+								class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-brand-divider text-brand-text-muted hover:text-brand-text hover:bg-brand-surface transition-colors text-[11px] font-bold"
+								onclick={openLinkNoteModal}
+							>
+								<StickyNote class="w-3.5 h-3.5" /> Vincular a una Nota
+							</button>
+						{/if}
 					</div>
 
 				</div>
@@ -2848,6 +2931,70 @@
 			<div class="flex justify-center gap-3 w-full">
 				<button class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors" onclick={() => listToDelete = null}>Cancelar</button>
 				<button class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]" onclick={() => { if(listToDelete !== null) confirmDeleteList(listToDelete); }}>Eliminar</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Modal Vincular Nota -->
+{#if showLinkNoteModal}
+	<div class="fixed inset-0 bg-[#070b0e]/90 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+		<div class="bg-[#0d1216] border border-brand-divider rounded-2xl p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]">
+			<div class="flex items-center justify-between mb-6">
+				<h3 class="text-lg font-black text-brand-text flex items-center gap-2">
+					<StickyNote class="w-5 h-5 text-brand-accent" /> Vincular Nota
+				</h3>
+				<button class="p-1 rounded-md text-brand-text-muted hover:bg-brand-surface hover:text-brand-text transition-colors" onclick={() => showLinkNoteModal = false}>
+					<X class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="mb-4">
+				<input 
+					type="text" 
+					bind:value={linkModalSearchQuery}
+					placeholder="Buscar nota por título..." 
+					class="w-full bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 text-sm font-semibold text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors"
+					autofocus
+				/>
+			</div>
+			<div class="flex-1 overflow-y-auto custom-scrollbar space-y-4">
+				{#if linkNotesLoading}
+					<p class="text-xs text-brand-text-muted text-center py-4">Cargando notas...</p>
+				{:else}
+					{@const filteredLinkNotes = linkableNotes.filter(n => n.title.toLowerCase().includes(linkModalSearchQuery.toLowerCase()))}
+					{#if filteredLinkNotes.length === 0}
+						<p class="text-xs text-brand-text-muted text-center py-4">No se encontraron notas.</p>
+					{:else}
+						{#each linkableFolders as folder}
+							{@const folderNotes = filteredLinkNotes.filter(n => n.folder_id === folder.id)}
+							{#if folderNotes.length > 0}
+								<div class="mb-4">
+									<h4 class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2 px-1">{folder.name}</h4>
+									<div class="space-y-1">
+										{#each folderNotes as note}
+											<button class="w-full text-left p-2 rounded-lg bg-[#070b0e] hover:bg-brand-surface border border-brand-divider hover:border-brand-accent/50 transition-colors" onclick={() => linkNoteToTask(note)}>
+												<span class="text-sm font-bold text-brand-text block truncate">{note.title || 'Sin título'}</span>
+											</button>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						{/each}
+						{@const unassignedNotes = filteredLinkNotes.filter(n => !n.folder_id)}
+						{#if unassignedNotes.length > 0}
+							<div class="mb-4">
+								<h4 class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2 px-1">Sin Carpeta</h4>
+								<div class="space-y-1">
+									{#each unassignedNotes as note}
+										<button class="w-full text-left p-2 rounded-lg bg-[#070b0e] hover:bg-brand-surface border border-brand-divider hover:border-brand-accent/50 transition-colors" onclick={() => linkNoteToTask(note)}>
+											<span class="text-sm font-bold text-brand-text block truncate">{note.title || 'Sin título'}</span>
+										</button>
+									{/each}
+								</div>
+							</div>
+						{/if}
+					{/if}
+				{/if}
 			</div>
 		</div>
 	</div>
