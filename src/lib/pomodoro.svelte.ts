@@ -25,6 +25,11 @@ export const pomodoro = $state({
 	completedTasks: [] as {title: string, duration: number}[]
 });
 
+export const pomodoroUI = $state({
+	isOpen: false,
+	isMaximized: false
+});
+
 let endsAt: number | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let alarmTimer: ReturnType<typeof setInterval> | null = null;

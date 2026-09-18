@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { Home, RefreshCw, ListChecks, User, Timer, StickyNote, X, LineChart } from 'lucide-svelte';
-	import { pomodoro } from '$lib/pomodoro.svelte';
+	import { pomodoro, pomodoroUI } from '$lib/pomodoro.svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
 
 	let { isOpen = false, closeMenu } = $props<{ isOpen: boolean, closeMenu: () => void }>();
@@ -21,10 +21,11 @@
 			match: (path: string) => path.startsWith('/tareas')
 		},
 		{
-			href: '/pomodoro',
+			id: 'pomodoro',
+			href: '#',
 			label: 'Foco',
 			icon: Timer,
-			match: (path: string) => path.startsWith('/pomodoro'),
+			match: (path: string) => pomodoroUI.isMaximized,
 			live: () => pomodoro.running || pomodoro.awaitingAck
 		},
 		{
@@ -59,28 +60,50 @@
 
 	<div class="flex flex-col flex-1 p-4 gap-2 overflow-y-auto">
 		{#each tabs as tab}
-			{@const active = tab.match(page.url.pathname)}
+			{@const active = tab.id === 'pomodoro' ? pomodoroUI.isMaximized : (!pomodoroUI.isMaximized && tab.match(page.url.pathname))}
 			{@const Icon = tab.icon}
 			{@const live = tab.live?.() ?? false}
-			<a
-				href={tab.href}
-				onclick={closeMenu}
-				class="relative flex flex-row items-center justify-start gap-3 transition-colors px-4 py-3 rounded-xl {active
-					? 'text-brand-accent bg-brand-surface-elevated'
-					: 'text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated'}"
-				aria-current={active ? 'page' : undefined}
-			>
-				<span class="relative">
-					<Icon class="w-5 h-5" strokeWidth={active ? 2.5 : 2} />
-					{#if live}
-						<span
-							class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-brand-accent"
-							aria-hidden="true"
-						></span>
-					{/if}
-				</span>
-				<span class="text-sm font-medium">{tab.label}</span>
-			</a>
+			
+			{#if tab.id === 'pomodoro'}
+				<button
+					onclick={() => { pomodoroUI.isMaximized = true; closeMenu(); }}
+					class="w-full relative flex flex-row items-center justify-start gap-3 transition-colors px-4 py-3 rounded-xl {active
+						? 'text-brand-accent bg-brand-surface-elevated'
+						: 'text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated'}"
+					aria-current={active ? 'page' : undefined}
+				>
+					<span class="relative">
+						<Icon class="w-5 h-5" strokeWidth={active ? 2.5 : 2} />
+						{#if live}
+							<span
+								class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-brand-accent"
+								aria-hidden="true"
+							></span>
+						{/if}
+					</span>
+					<span class="text-sm font-medium">{tab.label}</span>
+				</button>
+			{:else}
+				<a
+					href={tab.href}
+					onclick={() => { pomodoroUI.isMaximized = false; closeMenu(); }}
+					class="relative flex flex-row items-center justify-start gap-3 transition-colors px-4 py-3 rounded-xl {active
+						? 'text-brand-accent bg-brand-surface-elevated'
+						: 'text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated'}"
+					aria-current={active ? 'page' : undefined}
+				>
+					<span class="relative">
+						<Icon class="w-5 h-5" strokeWidth={active ? 2.5 : 2} />
+						{#if live}
+							<span
+								class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-brand-accent"
+								aria-hidden="true"
+							></span>
+						{/if}
+					</span>
+					<span class="text-sm font-medium">{tab.label}</span>
+				</a>
+			{/if}
 		{/each}
 	</div>
 </nav>

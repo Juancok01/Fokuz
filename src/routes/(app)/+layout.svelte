@@ -1,5 +1,6 @@
 <script lang="ts">
 	import BottomNav from '$lib/components/BottomNav.svelte';
+	import GlobalPomodoro from '$lib/components/GlobalPomodoro.svelte';
 	import { Menu } from 'lucide-svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
 
@@ -43,5 +44,7 @@
 		<div class="flex-1 flex flex-col min-h-0 relative overflow-y-auto">
 			{@render children()}
 		</div>
+
+		<GlobalPomodoro />
 	</div>
 </div>
