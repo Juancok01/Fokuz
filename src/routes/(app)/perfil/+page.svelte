@@ -11,6 +11,15 @@
 		contact_row_id?: number;
 	};
 
+	type SavedVerse = {
+		id: string;
+		text: string;
+		reference: string;
+		translation: string;
+		notes?: string;
+		created_at: string;
+	};
+
 	let displayName = $state('');
 	let editName = $state('');
 	let email = $state('');
@@ -33,6 +42,9 @@
 	let contactSuccess = $state('');
 	let editContactError = $state('');
 	let contactsLoadError = $state('');
+	
+	let savedVerses = $state<SavedVerse[]>([]);
+	let versesLoadError = $state('');
 
 	const contactLabel = (contact: Contact) =>
 		(contact.nickname || '').trim() || contact.display_name;
@@ -136,6 +148,21 @@
 		if (error) console.warn('No se pudo sincronizar perfil:', error.message);
 	};
 
+	const loadSavedVerses = async () => {
+		if (!supabase) return;
+		versesLoadError = '';
+		const { data, error } = await supabase
+			.from('saved_verses')
+			.select('*')
+			.order('created_at', { ascending: false });
+		if (error) {
+			console.warn('Error al cargar versículos guardados:', error.message);
+			versesLoadError = error.message;
+		} else {
+			savedVerses = data ?? [];
+		}
+	};
+
 	const loadProfile = async () => {
 		loading = true;
 		errorMsg = '';
@@ -160,7 +187,10 @@
 		userId = session?.user?.id ?? null;
 
 		await ensureProfile();
-		await loadContacts();
+		await Promise.all([
+			loadContacts(),
+			loadSavedVerses()
+		]);
 		loading = false;
 	};
 
@@ -345,6 +375,29 @@
 		if (selectedContact?.id === contact.id) closeEditContact();
 	};
 
+	const removeSavedVerse = async (verse: SavedVerse) => {
+		if (!supabase) return;
+		if (!confirm(`¿Eliminar la cita ${verse.reference} de tus guardados?`)) return;
+		
+		const { error } = await supabase.from('saved_verses').delete().eq('id', verse.id);
+		if (error) {
+			alert('Error al eliminar versículo: ' + error.message);
+			return;
+		}
+		savedVerses = savedVerses.filter(v => v.id !== verse.id);
+	};
+
+	const updateVerseNotes = async (verse: SavedVerse) => {
+		if (!supabase) return;
+		const { error } = await supabase
+			.from('saved_verses')
+			.update({ notes: verse.notes || null })
+			.eq('id', verse.id);
+		if (error) {
+			console.error('Error al guardar nota del versículo:', error.message);
+		}
+	};
+
 	onMount(() => {
 		loadProfile();
 	});
@@ -361,7 +414,7 @@
 	</div>
 </header>
 
-<div class="flex-1 px-6 py-8 space-y-6 pb-28 overflow-y-auto">
+<div class="flex-1 px-6 py-8 space-y-6 pb-28 overflow-y-auto w-full max-w-3xl mx-auto">
 	{#if loading}
 		<div class="bg-brand-surface border border-brand-divider rounded-2xl p-5 space-y-4">
 			<div class="h-4 w-28 rounded bg-brand-surface-elevated skeleton"></div>
@@ -426,6 +479,56 @@
 				{/each}
 			{/if}
 		</div>
+
+		<!-- New saved verses section -->
+		<div class="space-y-3 pt-4">
+			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">
+				Mis versículos guardados
+			</p>
+			{#if versesLoadError}
+				<p class="text-sm text-red-400 bg-red-500/10 border border-red-400/30 rounded-2xl p-4">
+					No se pudieron cargar los versículos: {versesLoadError}
+				</p>
+			{:else if savedVerses.length === 0}
+				<p class="text-sm text-brand-text-muted bg-brand-surface border border-brand-divider rounded-2xl p-4">
+					Aún no tienes versículos guardados. Ve al panel de inicio para guardar tus favoritos.
+				</p>
+			{:else}
+				{#each savedVerses as verse (verse.id)}
+					<div class="flex flex-col gap-2 bg-brand-surface border border-[#0B624C] rounded-2xl p-4 relative overflow-hidden shadow-md">
+						<div class="absolute inset-0 bg-brand-accent/5 pointer-events-none"></div>
+						<div class="relative z-10 flex items-start justify-between gap-3">
+							<div class="min-w-0 flex-1">
+								<p class="text-[15px] leading-relaxed text-brand-text italic font-serif mb-2">
+									<span class="text-brand-accent font-serif text-lg mr-1 leading-none">“</span>{verse.text}<span class="text-brand-accent font-serif text-lg ml-1 leading-none">”</span>
+								</p>
+								<div class="flex items-center gap-2">
+									<cite class="not-italic text-sm font-bold text-brand-accent">{verse.reference}</cite>
+									{#if verse.translation}
+										<span class="text-[9px] font-bold px-2 py-0.5 bg-brand-bg/50 border border-brand-divider rounded-md text-brand-accent shrink-0 uppercase tracking-widest">{verse.translation}</span>
+									{/if}
+								</div>
+							</div>
+							<button
+								class="p-2 text-brand-text-muted hover:text-red-400 hover:bg-brand-surface-elevated rounded-lg transition-colors shrink-0"
+								onclick={() => removeSavedVerse(verse)}
+								aria-label="Eliminar {verse.reference}"
+								title="Eliminar de guardados"
+							>
+								<Trash2 class="w-5 h-5" />
+							</button>
+						</div>
+						<textarea
+							class="w-full mt-2 bg-[#0d1216] border border-brand-divider rounded-xl p-3 text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors resize-none"
+							rows="2"
+							placeholder="Escribe una reflexión, comentario o nota sobre este versículo..."
+							bind:value={verse.notes}
+							onblur={() => updateVerseNotes(verse)}
+						></textarea>
+					</div>
+				{/each}
+			{/if}
+		</div>
 	{/if}
 
 	<button
@@ -441,14 +544,13 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="absolute inset-0 bg-black/50 z-30 transition-opacity"
+		class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
 		onclick={closeEditProfile}
-	></div>
+	>
+		<div class="w-full max-w-md bg-brand-surface rounded-t-3xl sm:rounded-2xl z-40 p-6 pt-4 shadow-2xl border-t sm:border border-brand-divider animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200" onclick={e => e.stopPropagation()}>
+			<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6 sm:hidden"></div>
 
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 shadow-2xl border-t border-brand-divider">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		<div class="flex justify-between items-center mb-6">
+			<div class="flex justify-between items-center mb-6">
 			<h3 class="text-lg font-bold text-brand-text">Editar perfil</h3>
 			<button
 				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
@@ -490,6 +592,7 @@
 		{#if errorMsg}
 			<p class="text-sm text-red-400 mt-3">{errorMsg}</p>
 		{/if}
+		</div>
 	</div>
 {/if}
 
@@ -497,14 +600,13 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="absolute inset-0 bg-black/50 z-30 transition-opacity"
+		class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
 		onclick={closeConnectContact}
-	></div>
+	>
+		<div class="w-full max-w-md bg-brand-surface rounded-t-3xl sm:rounded-2xl z-40 p-6 pt-4 shadow-2xl border-t sm:border border-brand-divider animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200" onclick={e => e.stopPropagation()}>
+			<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6 sm:hidden"></div>
 
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 shadow-2xl border-t border-brand-divider">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		<div class="flex justify-between items-center mb-6">
+			<div class="flex justify-between items-center mb-6">
 			<h3 class="text-lg font-bold text-brand-text">Conectar con contactos</h3>
 			<button
 				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
@@ -544,6 +646,7 @@
 		{#if contactSuccess}
 			<p class="text-sm text-brand-accent mt-3">{contactSuccess}</p>
 		{/if}
+		</div>
 	</div>
 {/if}
 
@@ -551,14 +654,13 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="absolute inset-0 bg-black/50 z-30 transition-opacity"
+		class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
 		onclick={closeEditContact}
-	></div>
+	>
+		<div class="w-full max-w-md bg-brand-surface rounded-t-3xl sm:rounded-2xl z-40 p-6 pt-4 shadow-2xl border-t sm:border border-brand-divider animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200" onclick={e => e.stopPropagation()}>
+			<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6 sm:hidden"></div>
 
-	<div class="absolute bottom-0 left-0 right-0 bg-brand-surface rounded-t-3xl z-40 p-6 pt-4 shadow-2xl border-t border-brand-divider">
-		<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6"></div>
-
-		<div class="flex justify-between items-center mb-6">
+			<div class="flex justify-between items-center mb-6">
 			<h3 class="text-lg font-bold text-brand-text">Editar contacto</h3>
 			<button
 				class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
@@ -610,5 +712,6 @@
 		{#if editContactError}
 			<p class="text-sm text-red-400 mt-3">{editContactError}</p>
 		{/if}
+		</div>
 	</div>
 {/if}
