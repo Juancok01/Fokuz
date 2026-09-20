@@ -42,6 +42,7 @@
 	let todayHabits = $state<TodayHabit[]>([]);
 	let dailyVerse = $state<DailyVerse | null>(null);
 	let verseLoading = $state(true);
+	let verseSaved = $state(false);
 	let loading = $state(true);
 	let hasLoaded = $state(false);
 	let habitToggleBusy = $state<number | null>(null);
@@ -64,6 +65,31 @@
 		const weekdayLabel = weekday.charAt(0).toUpperCase() + weekday.slice(1);
 		const monthLabel = month.charAt(0).toUpperCase() + month.slice(1);
 		return `Hoy, ${weekdayLabel} ${day} ${monthLabel}`;
+	});
+
+	const weekDays = $derived.by(() => {
+		const days = [];
+		const now = new Date();
+		for (let i = -2; i <= 2; i++) {
+			const d = new Date(now);
+			d.setDate(d.getDate() + i);
+			
+			const weekdayStr = new Intl.DateTimeFormat('es-CO', {
+				timeZone: 'America/Bogota',
+				weekday: 'short'
+			}).format(d);
+			const dayNum = new Intl.DateTimeFormat('es-CO', {
+				timeZone: 'America/Bogota',
+				day: 'numeric'
+			}).format(d);
+
+			const cleanWeekday = weekdayStr.replace(/\./g, '');
+			days.push({
+				label: `${cleanWeekday.charAt(0).toUpperCase() + cleanWeekday.slice(1)} ${dayNum}`,
+				isActive: i === 0
+			});
+		}
+		return days;
 	});
 
 	const greeting = $derived.by(() => {
@@ -127,7 +153,51 @@
 			console.warn('No se pudo cargar versículo desde API:', err);
 			if (!dailyVerse) dailyVerse = getLocalDailyVerse(today);
 		} finally {
+			if (supabase && dailyVerse && dailyVerse.reference) {
+				const { data } = await supabase
+					.from('saved_verses')
+					.select('id')
+					.eq('reference', dailyVerse.reference)
+					.maybeSingle();
+				verseSaved = !!data;
+			}
 			verseLoading = false;
+		}
+	};
+
+	const toggleSaveVerse = async () => {
+		if (!supabase || !dailyVerse) return;
+		const { data: { session } } = await supabase.auth.getSession();
+		if (!session) return;
+
+		const currentSavedState = verseSaved;
+		verseSaved = !verseSaved; // Optimistic update
+
+		if (currentSavedState) {
+			// Unsave
+			const { error } = await supabase
+				.from('saved_verses')
+				.delete()
+				.eq('reference', dailyVerse.reference)
+				.eq('user_id', session.user.id);
+			if (error) {
+				console.error('Error quitando guardado del versículo:', error);
+				verseSaved = currentSavedState; // Revert
+			}
+		} else {
+			// Save
+			const { error } = await supabase
+				.from('saved_verses')
+				.insert({
+					user_id: session.user.id,
+					text: dailyVerse.text,
+					reference: dailyVerse.reference,
+					translation: dailyVerse.translation
+				});
+			if (error) {
+				console.error('Error guardando versículo:', error);
+				verseSaved = currentSavedState; // Revert
+			}
 		}
 	};
 
@@ -286,13 +356,13 @@
 				<p class="text-xs text-brand-text-muted mt-1">Objetivos diarios sincronizados</p>
 			</div>
 		</div>
-		<!-- Mock Week Selector -->
+		<!-- Dynamic Week Selector -->
 		<div class="hidden lg:flex items-center gap-1 text-xs font-medium bg-brand-surface rounded-full p-1 border border-brand-divider">
-			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Vie 11</span>
-			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Sáb 12</span>
-			<span class="px-4 py-2 bg-brand-accent text-brand-bg rounded-full font-bold cursor-pointer">Dom 13</span>
-			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Lun 14</span>
-			<span class="px-4 py-2 text-brand-text-muted hover:text-brand-text transition-colors rounded-full cursor-pointer">Mar 15</span>
+			{#each weekDays as wd}
+				<span class="px-4 py-2 rounded-full cursor-pointer transition-colors {wd.isActive ? 'bg-brand-accent text-brand-bg font-bold' : 'text-brand-text-muted hover:text-brand-text'}">
+					{wd.label}
+				</span>
+			{/each}
 		</div>
 	</header>
 
@@ -331,7 +401,7 @@
 								<span class="text-brand-text"><span class="font-bold">{completedCount}</span> completadas</span>
 							</div>
 							<span class="text-brand-divider">·</span>
-							<span class="text-brand-text-muted">Total {totalCount} hábitos para hoy</span>
+							<span class="text-brand-text-muted">Total {totalCount} tareas para hoy</span>
 						</div>
 						
 						<div class="flex items-center gap-3">
@@ -339,23 +409,6 @@
 								<div class="h-full bg-brand-accent rounded-full transition-[width] duration-500 ease-out shadow-[0_0_10px_var(--color-brand-accent)]" style="width: {progress}%"></div>
 							</div>
 							<span class="text-xs font-bold text-brand-accent whitespace-nowrap">{progress}% Completado</span>
-						</div>
-					</div>
-
-					<div class="flex gap-3 shrink-0">
-						<div class="bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 flex items-center gap-3">
-							<Flame class="w-5 h-5 text-orange-500" />
-							<div>
-								<p class="text-[10px] text-brand-text-muted uppercase tracking-wide">Racha activa</p>
-								<p class="text-sm font-bold text-brand-text">7 días seguidos</p>
-							</div>
-						</div>
-						<div class="bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 flex items-center gap-3">
-							<Zap class="w-5 h-5 text-brand-accent" />
-							<div>
-								<p class="text-[10px] text-brand-text-muted uppercase tracking-wide">Enfoque</p>
-								<p class="text-sm font-bold text-brand-accent">Óptimo</p>
-							</div>
 						</div>
 					</div>
 				</div>
@@ -446,21 +499,7 @@
 				{/if}
 			</section>
 
-			<!-- Prioridades Banner -->
-			<div class="mt-2 rounded-2xl border border-brand-divider bg-brand-surface p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-				<div class="flex items-center gap-4">
-					<div class="w-10 h-10 shrink-0 rounded-full bg-brand-bg border border-brand-divider flex items-center justify-center">
-						<Target class="w-5 h-5 text-pink-500" />
-					</div>
-					<div>
-						<h4 class="font-bold text-brand-text text-[13px]">¿Listo para definir prioridades para mañana?</h4>
-						<p class="text-[11px] text-brand-text-muted mt-0.5">Deja tu mente libre antes de dormir redactando las 3 metas clave.</p>
-					</div>
-				</div>
-				<a href="/tareas" class="shrink-0 text-center px-4 py-2 border border-brand-divider bg-[#0d1216] hover:bg-brand-surface-elevated text-brand-text text-[11px] font-bold rounded-lg transition-colors">
-					Añadir metas
-				</a>
-			</div>
+
 		</div>
 
 		<!-- Right Column -->
@@ -475,8 +514,13 @@
 							<h3 class="text-xs font-bold text-brand-text tracking-wider uppercase">Versículo del día</h3>
 						</div>
 						<div class="flex items-center gap-3 text-brand-text-muted">
-							<button class="hover:text-brand-text transition-colors"><Bookmark class="w-4 h-4" /></button>
-							<button class="hover:text-brand-text transition-colors"><Share2 class="w-4 h-4" /></button>
+							<button 
+								class="transition-colors {verseSaved ? 'text-brand-accent' : 'hover:text-brand-text'}" 
+								onclick={toggleSaveVerse}
+								title={verseSaved ? "Quitar de guardados" : "Guardar versículo"}
+							>
+								<Bookmark class="w-4 h-4 {verseSaved ? 'fill-brand-accent' : ''}" />
+							</button>
 						</div>
 					</div>
 
