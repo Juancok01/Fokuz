@@ -79,9 +79,22 @@
 	function getTasksForCalendarDate(d: Date) {
 		const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 		return tasks.filter(t => {
-			const targetDate = t.end_date ? t.end_date : t.date;
+			let targetDate = t.end_date ? t.end_date : t.date;
+			if (targetDate) targetDate = targetDate.substring(0, 10);
 			return targetDate === dateStr;
 		});
+	}
+
+	function getDeadlineStyles(dateStr: string | null) {
+		if (!dateStr) return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
+		const now = new Date();
+		now.setHours(0,0,0,0);
+		const target = new Date(dateStr);
+		target.setHours(0,0,0,0);
+		const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+		if (diffDays < 0) return { badge: 'text-red-500 bg-red-500/10 border-red-500/20', border: 'border-red-500/50', bg: 'bg-red-500' };
+		if (diffDays <= 2) return { badge: 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20', border: 'border-yellow-400/50', bg: 'bg-yellow-400' };
+		return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
 	}
 	
 	function nextCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1); }
@@ -1963,7 +1976,8 @@
 										{/if}
 										<!-- Deadline -->
 										{#if task.end_date}
-											<span class="flex items-center gap-1 text-[9px] font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 px-1.5 py-0.5 rounded-md">
+											{@const dStyles = getDeadlineStyles(task.end_date)}
+											<span class="flex items-center gap-1 text-[9px] font-bold border px-1.5 py-0.5 rounded-md {dStyles.badge}">
 												<Timer class="w-3 h-3" /> {new Date(task.end_date).toLocaleDateString()}
 											</span>
 										{/if}
@@ -2133,8 +2147,11 @@
 								<!-- Tareas del día -->
 								<div class="space-y-1.5 h-[80px] overflow-y-auto custom-scrollbar pr-1">
 									{#each getTasksForCalendarDate(day.date) as task}
-										<div class="px-2 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1.5 truncate border cursor-pointer hover:brightness-110 transition-all {task.is_completed ? 'bg-brand-surface/50 border-brand-divider text-brand-text-muted line-through' : 'bg-brand-surface-elevated border-brand-accent/30 text-brand-text shadow-sm'}" title={task.title}>
-											<div class="w-1.5 h-1.5 rounded-full shrink-0 {task.is_completed ? 'bg-brand-text-muted' : 'bg-brand-accent'}"></div>
+										{@const dStyles = getDeadlineStyles(task.end_date || task.date)}
+										<!-- svelte-ignore a11y_click_events_have_key_events -->
+										<!-- svelte-ignore a11y_no_static_element_interactions -->
+										<div class="px-2 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1.5 truncate border cursor-pointer hover:brightness-110 transition-all {task.is_completed ? 'bg-brand-surface/50 border-brand-divider text-brand-text-muted line-through' : `bg-brand-surface-elevated ${dStyles.border} text-brand-text shadow-sm`}" title={task.title} onclick={() => openTaskUpdate(task)}>
+											<div class="w-1.5 h-1.5 rounded-full shrink-0 {task.is_completed ? 'bg-brand-text-muted' : dStyles.bg}"></div>
 											<span class="truncate">{task.title}</span>
 										</div>
 									{/each}
