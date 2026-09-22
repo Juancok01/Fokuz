@@ -85,11 +85,27 @@
 		});
 	}
 
+	function parseLocalDate(dateStr: string | null) {
+		if (!dateStr) return null;
+		const parts = dateStr.substring(0, 10).split('-');
+		if (parts.length === 3) {
+			return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+		}
+		return new Date(dateStr);
+	}
+
+	function formatLocalDate(dateStr: string | null) {
+		const d = parseLocalDate(dateStr);
+		if (!d) return '';
+		return d.toLocaleDateString();
+	}
+
 	function getDeadlineStyles(dateStr: string | null) {
 		if (!dateStr) return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
 		const now = new Date();
 		now.setHours(0,0,0,0);
-		const target = new Date(dateStr);
+		const target = parseLocalDate(dateStr);
+		if (!target) return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
 		target.setHours(0,0,0,0);
 		const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 		if (diffDays < 0) return { badge: 'text-red-500 bg-red-500/10 border-red-500/20', border: 'border-red-500/50', bg: 'bg-red-500' };
@@ -1978,7 +1994,7 @@
 										{#if task.end_date}
 											{@const dStyles = getDeadlineStyles(task.end_date)}
 											<span class="flex items-center gap-1 text-[9px] font-bold border px-1.5 py-0.5 rounded-md {dStyles.badge}">
-												<Timer class="w-3 h-3" /> {new Date(task.end_date).toLocaleDateString()}
+												<Timer class="w-3 h-3" /> {formatLocalDate(task.end_date)}
 											</span>
 										{/if}
 
