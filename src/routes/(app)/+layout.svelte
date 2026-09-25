@@ -1,7 +1,7 @@
 <script lang="ts">
 	import BottomNav from '$lib/components/BottomNav.svelte';
 	import GlobalPomodoro from '$lib/components/GlobalPomodoro.svelte';
-	import { Menu } from 'lucide-svelte';
+	import { Menu } from '@lucide/svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
 
 	let { children } = $props();

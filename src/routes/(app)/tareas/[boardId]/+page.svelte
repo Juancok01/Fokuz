@@ -2,7 +2,7 @@
 	import {
 	Calendar, GripVertical, CheckCircle2, Circle, Plus, X, AlertTriangle, Trash2, Tag, StickyNote, Share2, ListChecks, List, MoreVertical, ArrowLeft, Settings,
 	Filter, Timer, CheckSquare, Paperclip, MessageSquare, Flame, ChevronDown, Kanban, LayoutList, Zap, ChevronLeft, ChevronRight, Edit2, Clock, Users, ThumbsUp, Lock, AlignLeft, Activity, Check, AlertCircle, AtSign
-} from 'lucide-svelte';
+} from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';

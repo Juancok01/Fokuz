@@ -15,7 +15,7 @@
 		Sparkles,
 		Sun,
 		Utensils
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { HabitIconId } from '$lib/habits';
 
 	let {

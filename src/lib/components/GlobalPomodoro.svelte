@@ -6,7 +6,7 @@
 		Timer, Play, Pause, RotateCcw, Coffee, Target, X, ListChecks, Check, Music, Plus, 
 		Trash2, PlayCircle, PauseCircle, SkipForward, Volume2, CloudRain, Wind, Flame,
 		Activity, Zap, LayoutDashboard, Settings2, Minimize2, Maximize2, Sparkles
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import {
 		BREAK_MS, FOCUS_MS, acknowledgePomodoro, clearPomodoroTask, formatPomodoroTime,
 		pausePomodoro, pomodoro, pomodoroUI, resetPomodoro, setPomodoroPhase, startPomodoro, setPomodoroTimes

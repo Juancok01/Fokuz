@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { ChevronLeft, Plus, Save, Trash2, StickyNote, ChevronRight, Share2, X } from 'lucide-svelte';
+	import { ChevronLeft, Plus, Save, Trash2, StickyNote, ChevronRight, Share2, X } from '@lucide/svelte';
 	import 'quill/dist/quill.snow.css';
 	import 'highlight.js/styles/atom-one-dark.css';
 	import {

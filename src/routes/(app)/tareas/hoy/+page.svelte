@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft, Clock, CheckCircle2, Circle, ListChecks, Calendar, Kanban } from 'lucide-svelte';
+	import { ArrowLeft, Clock, CheckCircle2, Circle, ListChecks, Calendar, Kanban } from '@lucide/svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { goto } from '$app/navigation';
 
