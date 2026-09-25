@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Plus, Trash2, Edit2, Columns, AlertTriangle, LineChart } from 'lucide-svelte';
+	import { Plus, Trash2, Edit2, Columns, AlertTriangle, LineChart } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
 	import { onMount } from 'svelte';

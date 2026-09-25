@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { User, LogOut, Check, Pencil, X, UserPlus, Trash2, MoreVertical } from 'lucide-svelte';
+	import { User, LogOut, Check, Pencil, X, UserPlus, Trash2, MoreVertical } from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 

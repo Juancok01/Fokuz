@@ -12,7 +12,7 @@
 		Zap,
 		TrendingUp,
 		Info
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import HabitIcon from '$lib/components/HabitIcon.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-svelte';
+	import { ChevronLeft, ChevronRight, ArrowLeft } from '@lucide/svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { goto } from '$app/navigation';
 

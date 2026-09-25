@@ -4,7 +4,7 @@
 		LineChart, Download, ChevronLeft, ChevronRight, TrendingUp, Plus,
 		CreditCard, Home, Cloud, ShoppingCart, Zap, ShieldCheck, CheckCircle2,
 		Info, Lock, Smartphone, RefreshCw, Wallet, PiggyBank, CalendarDays, Edit2, Trash2, AlertTriangle
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 

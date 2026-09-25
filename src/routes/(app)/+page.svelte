@@ -12,7 +12,7 @@
 		Share2,
 		Bookmark,
 		Play
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';

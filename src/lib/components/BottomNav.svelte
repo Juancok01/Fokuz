@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Home, RefreshCw, ListChecks, User, Timer, StickyNote, X, LineChart } from 'lucide-svelte';
+	import { Home, RefreshCw, ListChecks, User, Timer, StickyNote, X, LineChart } from '@lucide/svelte';
 	import { pomodoro, pomodoroUI } from '$lib/pomodoro.svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
 

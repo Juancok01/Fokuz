@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Plus, MoreVertical, Trash2, Edit2, Columns, Calendar, List as ListIcon, AlertTriangle, Clock } from 'lucide-svelte';
+	import { Plus, MoreVertical, Trash2, Edit2, Columns, Calendar, List as ListIcon, AlertTriangle, Clock } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { supabase } from '$lib/supabaseClient';
 
