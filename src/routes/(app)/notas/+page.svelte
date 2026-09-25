@@ -1182,8 +1182,8 @@
 			{#if activeNote}
 				<div class="max-w-3xl mx-auto px-8 py-12 pb-32">
 					<!-- Titulo -->
-					<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-					<h1
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
 						id="editor-title"
 						role="textbox"
 						tabindex="0"
@@ -1194,7 +1194,7 @@
 						use:titleAction={activeNote.title}
 						onblur={updateTitle}
 						oninput={updateTitle}
-					></h1>
+					></div>
 
 					<!-- Metadatos de la nota -->
 					<div
@@ -1767,11 +1767,11 @@
 			
 			<div class="flex gap-4 mb-6">
 				<div class="flex-1">
-					<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Filas</label>
+					<span class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Filas</span>
 					<input type="number" min="1" max="20" bind:value={tableRows} class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-sm font-semibold text-brand-text focus:outline-none focus:border-brand-accent transition-colors shadow-inner" />
 				</div>
 				<div class="flex-1">
-					<label class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Columnas</label>
+					<span class="block text-[10px] font-bold text-brand-text-muted tracking-wider uppercase mb-2">Columnas</span>
 					<input type="number" min="1" max="20" bind:value={tableCols} class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-sm font-semibold text-brand-text focus:outline-none focus:border-brand-accent transition-colors shadow-inner" />
 				</div>
 			</div>

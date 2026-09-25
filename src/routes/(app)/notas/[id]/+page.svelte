@@ -360,11 +360,11 @@
 			
 			<div class="space-y-4 mb-6">
 				<div>
-					<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Filas</label>
+					<span class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Filas</span>
 					<input type="number" min="1" max="20" bind:value={tableRows} class="w-full bg-brand-bg border border-brand-divider rounded-xl px-4 py-2.5 text-brand-text focus:outline-none focus:border-brand-accent transition-colors" />
 				</div>
 				<div>
-					<label class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Columnas</label>
+					<span class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Columnas</span>
 					<input type="number" min="1" max="20" bind:value={tableCols} class="w-full bg-brand-bg border border-brand-divider rounded-xl px-4 py-2.5 text-brand-text focus:outline-none focus:border-brand-accent transition-colors" />
 				</div>
 			</div>
