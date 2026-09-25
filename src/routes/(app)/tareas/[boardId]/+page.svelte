@@ -365,6 +365,7 @@
 		const { data, error } = await supabase
 			.from('tags')
 			.select('id, name, color')
+			.eq('board_id', Number(boardId))
 			.order('name', { ascending: true });
 
 		if (error) {
@@ -686,7 +687,7 @@
 
 		const { data, error } = await supabase
 			.from('tags')
-			.insert([{ name, color: newTagColor }])
+			.insert([{ name, color: newTagColor, board_id: Number(boardId) }])
 			.select('id, name, color')
 			.single();
 
