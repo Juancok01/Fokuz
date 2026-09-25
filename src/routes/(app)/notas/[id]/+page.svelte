@@ -21,8 +21,8 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import { supabase } from '$lib/supabaseClient';
 
-	const id = $derived(page.params.id);
-	const parentId = $derived(page.url.searchParams.get('parent_id'));
+	const id = $derived(page.params.id as string);
+	const parentId = $derived(page.url.searchParams.get('parent_id') as string | null);
 	const isNew = $derived(id === 'nueva');
 
 	let note = $state<Partial<Note>>({ title: '', content: '' });
@@ -47,6 +47,7 @@
 
 
 	const loadData = async () => {
+		if (!supabase) return;
 		const { data: { user } } = await supabase.auth.getUser();
 		currentUserId = user?.id || '';
 
@@ -162,7 +163,7 @@
 			const Quill = (await import('quill')).default;
 			const hljs = (await import('highlight.js')).default;
 
-			const icons = Quill.import('ui/icons');
+			const icons = Quill.import('ui/icons') as Record<string, string>;
 			icons['table'] = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>';
 			icons['table-delete'] = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" opacity="0.3"/><path d="M8 8l8 8M16 8l-8 8"/></svg>';
 

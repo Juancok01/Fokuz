@@ -34,7 +34,7 @@
 		Menu,
 		Table,
 		ListOrdered,
-	} from "lucide-svelte";
+	} from "@lucide/svelte";
 	import { goto } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
 	import { onMount, onDestroy } from "svelte";
