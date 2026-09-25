@@ -1,19 +1,55 @@
 <script lang="ts">
 	import {
-	Calendar, GripVertical, CheckCircle2, Circle, Plus, X, AlertTriangle, Trash2, Tag, StickyNote, Share2, ListChecks, List, MoreVertical, ArrowLeft, Settings,
-	Filter, Timer, CheckSquare, Paperclip, MessageSquare, Flame, ChevronDown, Kanban, LayoutList, Zap, ChevronLeft, ChevronRight, Edit2, Clock, Users, ThumbsUp, Lock, AlignLeft, Activity, Check, AlertCircle, AtSign
-} from '@lucide/svelte';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import { untrack } from 'svelte';
-	import { supabase } from '$lib/supabaseClient';
-	import { dndzone } from 'svelte-dnd-action';
-	import logo from '$lib/assets/Logo_Fokuz.png';
-	import TagSelect from '$lib/components/TagSelect.svelte';
-	import Toast from '$lib/components/Toast.svelte';
-	import DateTimePicker from '$lib/components/DateTimePicker.svelte';
-	import RichTextEditor from '$lib/components/RichTextEditor.svelte';
-	import { linkPomodoroTask, pomodoroUI } from '$lib/pomodoro.svelte';
+		Calendar,
+		GripVertical,
+		CheckCircle2,
+		Circle,
+		Plus,
+		X,
+		AlertTriangle,
+		Trash2,
+		Tag,
+		StickyNote,
+		Share2,
+		ListChecks,
+		List,
+		MoreVertical,
+		ArrowLeft,
+		Settings,
+		Filter,
+		Timer,
+		CheckSquare,
+		Paperclip,
+		MessageSquare,
+		Flame,
+		ChevronDown,
+		Kanban,
+		LayoutList,
+		Zap,
+		ChevronLeft,
+		ChevronRight,
+		Edit2,
+		Clock,
+		Users,
+		ThumbsUp,
+		Lock,
+		AlignLeft,
+		Activity,
+		Check,
+		AlertCircle,
+		AtSign,
+	} from "@lucide/svelte";
+	import { goto } from "$app/navigation";
+	import { page } from "$app/state";
+	import { untrack } from "svelte";
+	import { supabase } from "$lib/supabaseClient";
+	import { dndzone } from "svelte-dnd-action";
+	import logo from "$lib/assets/Logo_Fokuz.png";
+	import TagSelect from "$lib/components/TagSelect.svelte";
+	import Toast from "$lib/components/Toast.svelte";
+	import DateTimePicker from "$lib/components/DateTimePicker.svelte";
+	import RichTextEditor from "$lib/components/RichTextEditor.svelte";
+	import { linkPomodoroTask, pomodoroUI } from "$lib/pomodoro.svelte";
 
 	type TaskTag = { id: number; name: string; color: string };
 	type Contact = {
@@ -36,8 +72,8 @@
 		is_completed: boolean;
 		order_index: number;
 	};
-	type TaskPanel = 'menu' | 'novedad' | 'share' | 'listas';
-	
+	type TaskPanel = "menu" | "novedad" | "share" | "listas";
+
 	// Estado de la aplicación usando las Runes de Svelte 5
 	let tasks = $state<any[]>([]);
 	let tags = $state<TaskTag[]>([]);
@@ -47,7 +83,7 @@
 	let currentBoard = $state<any>(null);
 	let allBoards = $state<any[]>([]);
 	let showBoardDropdown = $state(false);
-	let viewMode = $state('kanban');
+	let viewMode = $state("kanban");
 	let boardLists = $state<any[]>([]);
 	let calendarCurrentMonth = $state(new Date());
 	let boardCalendarDays = $derived.by(() => {
@@ -55,19 +91,24 @@
 		const month = calendarCurrentMonth.getMonth();
 		const firstDay = new Date(year, month, 1);
 		const lastDay = new Date(year, month + 1, 0);
-		
+
 		let days = [];
-		const startPadding = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Lunes como inicio
+		const startPadding =
+			firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1; // Lunes como inicio
 		for (let i = 0; i < startPadding; i++) {
 			const d = new Date(year, month, -startPadding + i + 1);
 			days.push({ date: d, currentMonth: false });
 		}
-		
+
 		for (let i = 1; i <= lastDay.getDate(); i++) {
 			const d = new Date(year, month, i);
-			days.push({ date: d, currentMonth: true, isToday: new Date().toDateString() === d.toDateString() });
+			days.push({
+				date: d,
+				currentMonth: true,
+				isToday: new Date().toDateString() === d.toDateString(),
+			});
 		}
-		
+
 		const endPadding = 42 - days.length;
 		for (let i = 1; i <= endPadding; i++) {
 			const d = new Date(year, month + 1, i);
@@ -77,8 +118,10 @@
 	});
 
 	function getTasksForCalendarDate(d: Date) {
-		const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-		return tasks.filter(t => {
+		const dateStr = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+			.toISOString()
+			.split("T")[0];
+		return tasks.filter((t) => {
 			let targetDate = t.end_date ? t.end_date : t.date;
 			if (targetDate) targetDate = targetDate.substring(0, 10);
 			return targetDate === dateStr;
@@ -87,50 +130,101 @@
 
 	function parseLocalDate(dateStr: string | null) {
 		if (!dateStr) return null;
-		const parts = dateStr.substring(0, 10).split('-');
+		const parts = dateStr.substring(0, 10).split("-");
 		if (parts.length === 3) {
-			return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+			return new Date(
+				Number(parts[0]),
+				Number(parts[1]) - 1,
+				Number(parts[2]),
+			);
 		}
 		return new Date(dateStr);
 	}
 
 	function formatLocalDate(dateStr: string | null) {
 		const d = parseLocalDate(dateStr);
-		if (!d) return '';
+		if (!d) return "";
 		return d.toLocaleDateString();
 	}
 
 	function getDeadlineStyles(dateStr: string | null) {
-		if (!dateStr) return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
+		if (!dateStr)
+			return {
+				badge: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+				border: "border-amber-500/50",
+				bg: "bg-amber-500",
+			};
 		const now = new Date();
-		now.setHours(0,0,0,0);
+		now.setHours(0, 0, 0, 0);
 		const target = parseLocalDate(dateStr);
-		if (!target) return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
-		target.setHours(0,0,0,0);
-		const diffDays = Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-		if (diffDays < 0) return { badge: 'text-red-500 bg-red-500/10 border-red-500/20', border: 'border-red-500/50', bg: 'bg-red-500' };
-		if (diffDays <= 2) return { badge: 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20', border: 'border-yellow-400/50', bg: 'bg-yellow-400' };
-		return { badge: 'text-amber-500 bg-amber-500/10 border-amber-500/20', border: 'border-amber-500/50', bg: 'bg-amber-500' };
+		if (!target)
+			return {
+				badge: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+				border: "border-amber-500/50",
+				bg: "bg-amber-500",
+			};
+		target.setHours(0, 0, 0, 0);
+		const diffDays = Math.ceil(
+			(target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+		);
+		if (diffDays < 0)
+			return {
+				badge: "text-red-500 bg-red-500/10 border-red-500/20",
+				border: "border-red-500/50",
+				bg: "bg-red-500",
+			};
+		if (diffDays <= 2)
+			return {
+				badge: "text-yellow-300 bg-yellow-400/10 border-yellow-400/20",
+				border: "border-yellow-400/50",
+				bg: "bg-yellow-400",
+			};
+		return {
+			badge: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+			border: "border-amber-500/50",
+			bg: "bg-amber-500",
+		};
 	}
-	
-	function nextCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1); }
-	function prevCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() - 1, 1); }
 
-	$effect(() => { if (boardId) loadBoard(boardId); });
+	function nextCalMonth() {
+		calendarCurrentMonth = new Date(
+			calendarCurrentMonth.getFullYear(),
+			calendarCurrentMonth.getMonth() + 1,
+			1,
+		);
+	}
+	function prevCalMonth() {
+		calendarCurrentMonth = new Date(
+			calendarCurrentMonth.getFullYear(),
+			calendarCurrentMonth.getMonth() - 1,
+			1,
+		);
+	}
 
-	async function loadBoard(id: string) { 
-		const {data} = await supabase!.from('boards').select('*').eq('id', id).single(); 
-		currentBoard = data; 
-		const {data: boardsData} = await supabase!.from('boards').select('*').order('created_at', { ascending: true });
+	$effect(() => {
+		if (boardId) loadBoard(boardId);
+	});
+
+	async function loadBoard(id: string) {
+		const { data } = await supabase!
+			.from("boards")
+			.select("*")
+			.eq("id", id)
+			.single();
+		currentBoard = data;
+		const { data: boardsData } = await supabase!
+			.from("boards")
+			.select("*")
+			.order("created_at", { ascending: true });
 		allBoards = boardsData || [];
 	}
 	let tasksRefreshing = $state(false);
 	let tasksFetchId = 0;
 	let loadedDateStr = $state<string | null>(null);
-	
+
 	// Inicializar la fecha a las 00:00:00 sin mutaciones externas para evitar warnings en Svelte 5
 	const initDate = new Date();
-	initDate.setHours(0,0,0,0);
+	initDate.setHours(0, 0, 0, 0);
 	let selectedDate = $state(initDate);
 
 	let showNewTask = $state(false);
@@ -138,7 +232,7 @@
 	let showDeleteTaskConfirm = $state(false);
 	let showTaskOptions = $state(false);
 	let showCalendar = $state(false);
-	let calendarMode = $state<'navigate' | 'moveTask'>('navigate');
+	let calendarMode = $state<"navigate" | "moveTask">("navigate");
 	let showTags = $state(false);
 	let showFilter = $state(false);
 	let filterTagIds = $state<number[]>([]);
@@ -146,38 +240,45 @@
 	let filterSharedOnly = $state(false);
 	let filterHasLists = $state(false);
 	let filterHasNovedad = $state(false);
-	let filterStatus = $state<'all' | 'pending' | 'completed'>('all');
+	let filterStatus = $state<"all" | "pending" | "completed">("all");
 	let showCrearListaModal = $state(false);
 	let showVerListasModal = $state(false);
 	let showEditListModal = $state(false);
-	let editListName = $state('');
-	let newListItemTitle = $state('');
+	let editListName = $state("");
+	let newListItemTitle = $state("");
 	let editListItemId = $state<number | null>(null);
-	let editListItemTitle = $state('');
-	let newTaskTitle = $state('');
-	let newTaskStartDate = $state(new Date().toISOString().split('T')[0]);
-	let newTaskEndDate = $state('');
+	let editListItemTitle = $state("");
+	let newTaskTitle = $state("");
+	let newTaskStartDate = $state(new Date().toISOString().split("T")[0]);
+	let newTaskEndDate = $state("");
 	let newTaskSharedWith = $state<string[]>([]);
 	let selectedTagId = $state<number | null>(null);
-	let newTagName = $state('');
-	let newTagColor = $state('#feef4c');
+	let newTagName = $state("");
+	let newTagColor = $state("#feef4c");
 	let tagToDelete = $state<number | null>(null);
 	let tagToEdit = $state<number | null>(null);
-	let editTagName = $state('');
-	let editTagColor = $state('');
+	let editTagName = $state("");
+	let editTagColor = $state("");
 	let openListMenuId = $state<number | null>(null);
 	let listToEdit = $state<number | null>(null);
-	let editListTitle = $state('');
+	let editListTitle = $state("");
 	let listToDelete = $state<number | null>(null);
 
-	const TAG_COLORS = ['#feef4c', '#7dd3fc', '#f9a8d4', '#86efac', '#fdba74', '#c4b5fd'];
-	
+	const TAG_COLORS = [
+		"#feef4c",
+		"#7dd3fc",
+		"#f9a8d4",
+		"#86efac",
+		"#fdba74",
+		"#c4b5fd",
+	];
+
 	// Estado para editar la tarea
 	let selectedTaskId = $state<number | null>(null);
-	let selectedTaskTitle = $state('');
-	let subtaskTitle = $state('');
+	let selectedTaskTitle = $state("");
+	let subtaskTitle = $state("");
 	let taskComments = $state<any[]>([]);
-	let newCommentText = $state('');
+	let newCommentText = $state("");
 	let selectedTaskLinkedNoteId = $state<string | null>(null);
 	let selectedTaskLinkedNoteTitle = $state<string | null>(null);
 
@@ -186,47 +287,60 @@
 	let linkableFolders = $state<any[]>([]);
 	let linkableNotes = $state<any[]>([]);
 	let linkNotesLoading = $state(false);
-	let linkModalSearchQuery = $state('');
-	
+	let linkModalSearchQuery = $state("");
+
 	let subtasks = $derived(
-		tasks.filter(t => t.parent_task_id === selectedTaskId)
+		tasks.filter((t) => t.parent_task_id === selectedTaskId),
 	);
-	let editingNovedad = $state('');
-	let editingDescription = $state('');
-	let editingDate = $state('');
-	let editingEndDate = $state('');
+	let editingNovedad = $state("");
+	let editingDescription = $state("");
+	let editingDate = $state("");
+	let editingEndDate = $state("");
 	let editingTagId = $state<number | null>(null);
 	let showNewChecklistForm = $state(false);
-	let newChecklistName = $state('');
-	let taskPanel = $state<TaskPanel>('menu');
+	let newChecklistName = $state("");
+	let taskPanel = $state<TaskPanel>("menu");
 	let taskLists = $state<TaskList[]>([]);
 	let selectedList = $state<TaskList | null>(null);
 	let selectedListItems = $state<TaskListItem[]>([]);
-	let newListName = $state('');
+	let newListName = $state("");
 	let draftListItems = $state<string[]>([]);
-	let newDraftItem = $state('');
+	let newDraftItem = $state("");
 	let editChecklistId = $state<number | null>(null);
-	let editChecklistName = $state('');
+	let editChecklistName = $state("");
 	let listsLoading = $state(false);
 	let listDetailLoading = $state(false);
-	let listaError = $state('');
-	let listaSuccess = $state('');
+	let listaError = $state("");
+	let listaSuccess = $state("");
 	let listaSuccessTimer: ReturnType<typeof setTimeout> | null = null;
 	let sharedWithIds = $state(new Set<string>());
 	let shareBusyId = $state<string | null>(null);
-	let taskActionError = $state('');
-	let taskActionSuccess = $state('');
+	let taskActionError = $state("");
+	let taskActionSuccess = $state("");
 	let showTaskCreatedToast = $state(false);
 
 	const contactLabel = (contact: Contact) =>
-		(contact.nickname || '').trim() || contact.display_name;
+		(contact.nickname || "").trim() || contact.display_name;
 
 	// Variables para el calendario custom
 	let calMonth = $state(initDate.getMonth());
 	let calYear = $state(initDate.getFullYear());
 	let daysWithActiveTasks = $state(new Set<string>());
 
-	const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+	const monthNames = [
+		"Enero",
+		"Febrero",
+		"Marzo",
+		"Abril",
+		"Mayo",
+		"Junio",
+		"Julio",
+		"Agosto",
+		"Septiembre",
+		"Octubre",
+		"Noviembre",
+		"Diciembre",
+	];
 
 	let calendarDays = $derived.by(() => {
 		let days = [];
@@ -238,27 +352,34 @@
 	});
 
 	const prevMonth = () => {
-		if (calMonth === 0) { calMonth = 11; calYear--; }
-		else calMonth--;
+		if (calMonth === 0) {
+			calMonth = 11;
+			calYear--;
+		} else calMonth--;
 	};
 
 	const nextMonth = () => {
-		if (calMonth === 11) { calMonth = 0; calYear++; }
-		else calMonth++;
+		if (calMonth === 11) {
+			calMonth = 0;
+			calYear++;
+		} else calMonth++;
 	};
 
 	const closeCalendar = () => {
 		showCalendar = false;
-		calendarMode = 'navigate';
+		calendarMode = "navigate";
 	};
 
 	const openMoveTaskCalendar = () => {
 		if (selectedTaskId === null) return;
 		showTaskOptions = false;
-		calendarMode = 'moveTask';
+		calendarMode = "moveTask";
 		const task = tasks.find((t) => t.id === selectedTaskId);
-		const dateStr = typeof task?.date === 'string' ? task.date : formatDateString(selectedDate);
-		const [y, m, d] = dateStr.split('-').map(Number);
+		const dateStr =
+			typeof task?.date === "string"
+				? task.date
+				: formatDateString(selectedDate);
+		const [y, m, d] = dateStr.split("-").map(Number);
 		if (y && m && d) {
 			calMonth = m - 1;
 			calYear = y;
@@ -280,7 +401,10 @@
 		showTaskOptions = false;
 		showTaskUpdate = false;
 
-		const { error } = await supabase.from('tasks').update({ date: dateStr }).eq('id', taskId);
+		const { error } = await supabase
+			.from("tasks")
+			.update({ date: dateStr })
+			.eq("id", taskId);
 
 		if (error) {
 			tasks = previous;
@@ -292,7 +416,7 @@
 		const d = new Date(calYear, calMonth, day);
 		d.setHours(0, 0, 0, 0);
 
-		if (calendarMode === 'moveTask') {
+		if (calendarMode === "moveTask") {
 			await moveTaskToDate(d);
 			return;
 		}
@@ -302,8 +426,8 @@
 	};
 
 	const formatDayKey = (year: number, month: number, day: number) => {
-		const m = String(month + 1).padStart(2, '0');
-		const d = String(day).padStart(2, '0');
+		const m = String(month + 1).padStart(2, "0");
+		const d = String(day).padStart(2, "0");
 		return `${year}-${m}-${d}`;
 	};
 
@@ -318,14 +442,17 @@
 		const end = formatDayKey(calYear, calMonth, lastDay);
 
 		const { data, error } = await supabase
-			.from('tasks')
-			.select('date')
-			.eq('is_completed', false)
-			.gte('date', start)
-			.lte('date', end);
+			.from("tasks")
+			.select("date")
+			.eq("is_completed", false)
+			.gte("date", start)
+			.lte("date", end);
 
 		if (error) {
-			console.warn('Error al cargar días con tareas activas:', error.message);
+			console.warn(
+				"Error al cargar días con tareas activas:",
+				error.message,
+			);
 			return;
 		}
 
@@ -334,7 +461,7 @@
 
 	// Sincronizar el calendario con la fecha seleccionada al abrir (solo navegación)
 	$effect(() => {
-		if (showCalendar && calendarMode === 'navigate') {
+		if (showCalendar && calendarMode === "navigate") {
 			calMonth = selectedDate.getMonth();
 			calYear = selectedDate.getFullYear();
 		}
@@ -351,8 +478,8 @@
 	// Funciones auxiliares
 	const formatDateString = (d: Date) => {
 		const year = d.getFullYear();
-		const month = String(d.getMonth() + 1).padStart(2, '0');
-		const day = String(d.getDate()).padStart(2, '0');
+		const month = String(d.getMonth() + 1).padStart(2, "0");
+		const day = String(d.getDate()).padStart(2, "0");
 		return `${year}-${month}-${day}`;
 	};
 
@@ -363,13 +490,13 @@
 		}
 
 		const { data, error } = await supabase
-			.from('tags')
-			.select('id, name, color')
-			.eq('board_id', Number(boardId))
-			.order('name', { ascending: true });
+			.from("tags")
+			.select("id, name, color")
+			.eq("board_id", Number(boardId))
+			.order("name", { ascending: true });
 
 		if (error) {
-			console.warn('Error al cargar etiquetas:', error.message);
+			console.warn("Error al cargar etiquetas:", error.message);
 			return;
 		}
 		if (data) tags = data;
@@ -382,19 +509,22 @@
 		}
 
 		let rowsResult = await supabase
-			.from('contacts')
-			.select('id, nickname, contact_user_id')
-			.order('created_at', { ascending: false });
+			.from("contacts")
+			.select("id, nickname, contact_user_id")
+			.order("created_at", { ascending: false });
 
 		if (rowsResult.error && /nickname/i.test(rowsResult.error.message)) {
 			rowsResult = (await supabase
-				.from('contacts')
-				.select('id, contact_user_id')
-				.order('created_at', { ascending: false })) as any;
+				.from("contacts")
+				.select("id, contact_user_id")
+				.order("created_at", { ascending: false })) as any;
 		}
 
 		if (rowsResult.error) {
-			console.warn('Error al cargar contactos:', rowsResult.error.message);
+			console.warn(
+				"Error al cargar contactos:",
+				rowsResult.error.message,
+			);
 			contacts = [];
 			return;
 		}
@@ -407,27 +537,27 @@
 
 		const ids = rows.map((row) => row.contact_user_id);
 		const { data: profiles } = await supabase
-			.from('profiles')
-			.select('id, email, display_name')
-			.in('id', ids);
+			.from("profiles")
+			.select("id, email, display_name")
+			.in("id", ids);
 
 		const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 		contacts = rows.map((row) => {
 			const profile = profileMap.get(row.contact_user_id);
 			return {
 				id: row.contact_user_id,
-				email: profile?.email ?? 'Contacto',
-				nickname: ((row as any).nickname || '').trim(),
+				email: profile?.email ?? "Contacto",
+				nickname: ((row as any).nickname || "").trim(),
 				display_name:
-					(profile?.display_name || '').trim() ||
-					(profile?.email ? profile.email.split('@')[0] : 'Contacto')
+					(profile?.display_name || "").trim() ||
+					(profile?.email ? profile.email.split("@")[0] : "Contacto"),
 			};
 		});
 	};
 
 	const normalizeSharedTasks = (sharedData: unknown): any[] => {
 		if (Array.isArray(sharedData)) return sharedData;
-		if (typeof sharedData === 'string') {
+		if (typeof sharedData === "string") {
 			try {
 				const parsed = JSON.parse(sharedData);
 				return Array.isArray(parsed) ? parsed : [];
@@ -442,18 +572,18 @@
 		if (!supabase) return [] as any[];
 
 		const {
-			data: { session }
+			data: { session },
 		} = await supabase.auth.getSession();
 		const me = session?.user?.id;
 		if (!me) return [];
 
 		const { data: shares, error: sharesError } = await supabase
-			.from('task_shares')
-			.select('task_id')
-			.eq('shared_with', me);
+			.from("task_shares")
+			.select("task_id")
+			.eq("shared_with", me);
 
 		if (sharesError) {
-			console.warn('Error al cargar shares:', sharesError.message);
+			console.warn("Error al cargar shares:", sharesError.message);
 			return [];
 		}
 
@@ -461,29 +591,32 @@
 		if (ids.length === 0) return [];
 
 		const { data, error } = await supabase
-			.from('tasks')
-			.select('*, tags(id, name, color)')
-			.in('id', ids)
-			.eq('board_id', Number(boardId))
-			.order('order_index', { ascending: true });
+			.from("tasks")
+			.select("*, tags(id, name, color)")
+			.in("id", ids)
+			.eq("board_id", Number(boardId))
+			.order("order_index", { ascending: true });
 
 		if (error) {
-			console.warn('Error al cargar tareas compartidas (fallback):', error.message);
+			console.warn(
+				"Error al cargar tareas compartidas (fallback):",
+				error.message,
+			);
 			return [];
 		}
 
 		return data ?? [];
 	};
 
-		let boardListsError = $state('');
+	let boardListsError = $state("");
 
 	const fetchBoardLists = async () => {
 		if (!supabase) return;
 		const { data, error } = await supabase
-			.from('board_lists')
-			.select('*')
-			.eq('board_id', Number(boardId))
-			.order('order_index', { ascending: true });
+			.from("board_lists")
+			.select("*")
+			.eq("board_id", Number(boardId))
+			.order("order_index", { ascending: true });
 		if (error) {
 			console.error("Error al cargar board_lists:", error);
 			boardListsError = error.message;
@@ -507,7 +640,9 @@
 
 		try {
 			if (!supabase) {
-				console.warn('Supabase no está configurado. Las tareas no se pueden cargar.');
+				console.warn(
+					"Supabase no está configurado. Las tareas no se pueden cargar.",
+				);
 				if (requestId === tasksFetchId) {
 					tasks = [];
 					loadedDateStr = dateStr;
@@ -517,22 +652,29 @@
 
 			const [ownResult, sharedResult] = await Promise.all([
 				supabase
-					.from('tasks')
-					.select('*, tags(id, name, color)')
-					.eq('board_id', Number(boardId))
-					.order('order_index', { ascending: true }),
-				/* supabase.rpc('get_shared_tasks_for_date', { target_date: dateStr }) */ { data: [], error: null }
+					.from("tasks")
+					.select("*, tags(id, name, color)")
+					.eq("board_id", Number(boardId))
+					.order("order_index", { ascending: true }),
+				/* supabase.rpc('get_shared_tasks_for_date', { target_date: dateStr }) */ {
+					data: [],
+					error: null,
+				},
 			]);
 
 			if (requestId !== tasksFetchId) return;
 
-			if (ownResult.error) alert('Error al cargar: ' + ownResult.error.message);
+			if (ownResult.error)
+				alert("Error al cargar: " + ownResult.error.message);
 
 			let merged = ownResult.data ?? [];
 
 			let sharedList = normalizeSharedTasks(sharedResult.data);
 			if (sharedResult.error) {
-				console.warn('Error al cargar tareas compartidas:', (sharedResult.error as any).message);
+				console.warn(
+					"Error al cargar tareas compartidas:",
+					(sharedResult.error as any).message,
+				);
 				sharedList = await fetchSharedTasksFallback(dateStr);
 			} else if (sharedList.length === 0) {
 				// Si el RPC no trae nada, intenta por RLS directo (por si el SQL viejo falla)
@@ -548,11 +690,16 @@
 				if (shared?.id == null) continue;
 				receivedSharedIds.add(shared.id);
 				if (!existingIds.has(shared.id)) {
-					merged = [...merged, { ...shared, is_shared: true, is_shared_with_me: true }];
+					merged = [
+						...merged,
+						{ ...shared, is_shared: true, is_shared_with_me: true },
+					];
 					existingIds.add(shared.id);
 				} else {
 					merged = merged.map((t) =>
-						t.id === shared.id ? { ...t, is_shared: true, is_shared_with_me: true } : t
+						t.id === shared.id
+							? { ...t, is_shared: true, is_shared_with_me: true }
+							: t,
 					);
 				}
 			}
@@ -561,13 +708,17 @@
 			const taskIds = merged.map((t) => t.id);
 			const taskIdsWithLists = new Set<number>();
 			if (taskIds.length > 0) {
-				const [{ data: shareRows }, { data: listRows }] = await Promise.all([
-					supabase
-						.from('task_shares')
-						.select('task_id, shared_with')
-						.in('task_id', taskIds),
-					supabase.from('task_lists').select('task_id').in('task_id', taskIds)
-				]);
+				const [{ data: shareRows }, { data: listRows }] =
+					await Promise.all([
+						supabase
+							.from("task_shares")
+							.select("task_id, shared_with")
+							.in("task_id", taskIds),
+						supabase
+							.from("task_lists")
+							.select("task_id")
+							.in("task_id", taskIds),
+					]);
 
 				if (requestId !== tasksFetchId) return;
 
@@ -577,26 +728,31 @@
 
 				const rows = shareRows ?? [];
 				const sharedOutIds = new Set(rows.map((row) => row.task_id));
-				const sharedUserIds = [...new Set(rows.map((row) => row.shared_with))];
+				const sharedUserIds = [
+					...new Set(rows.map((row) => row.shared_with)),
+				];
 
 				const nameByUserId = new Map<string, string>();
 				for (const contact of contacts) {
 					nameByUserId.set(contact.id, contactLabel(contact));
 				}
 
-				const missingIds = sharedUserIds.filter((id) => !nameByUserId.has(id));
+				const missingIds = sharedUserIds.filter(
+					(id) => !nameByUserId.has(id),
+				);
 				if (missingIds.length > 0) {
 					const { data: profiles } = await supabase
-						.from('profiles')
-						.select('id, email, display_name')
-						.in('id', missingIds);
+						.from("profiles")
+						.select("id, email, display_name")
+						.in("id", missingIds);
 
 					if (requestId !== tasksFetchId) return;
 
 					for (const profile of profiles ?? []) {
 						nameByUserId.set(
 							profile.id,
-							(profile.display_name || '').trim() || profile.email.split('@')[0]
+							(profile.display_name || "").trim() ||
+								profile.email.split("@")[0],
 						);
 					}
 				}
@@ -605,7 +761,9 @@
 				const idsByTask = new Map<number, string[]>();
 				for (const row of rows) {
 					const labels = labelsByTask.get(row.task_id) ?? [];
-					labels.push(nameByUserId.get(row.shared_with) || 'contacto');
+					labels.push(
+						nameByUserId.get(row.shared_with) || "contacto",
+					);
 					labelsByTask.set(row.task_id, labels);
 
 					const ids = idsByTask.get(row.task_id) ?? [];
@@ -617,13 +775,15 @@
 					const labels = labelsByTask.get(t.id) ?? [];
 					const sharedIds = idsByTask.get(t.id) ?? [];
 					const isShared =
-						Boolean(t.is_shared) || receivedSharedIds.has(t.id) || sharedOutIds.has(t.id);
+						Boolean(t.is_shared) ||
+						receivedSharedIds.has(t.id) ||
+						sharedOutIds.has(t.id);
 					return {
 						...t,
 						is_shared: isShared,
 						shared_with_labels: labels,
 						shared_with_ids: sharedIds,
-						has_lists: taskIdsWithLists.has(t.id)
+						has_lists: taskIdsWithLists.has(t.id),
 					};
 				});
 			}
@@ -640,7 +800,9 @@
 	};
 
 	const setTaskHasLists = (taskId: number, hasLists: boolean) => {
-		tasks = tasks.map((t) => (t.id === taskId ? { ...t, has_lists: hasLists } : t));
+		tasks = tasks.map((t) =>
+			t.id === taskId ? { ...t, has_lists: hasLists } : t,
+		);
 	};
 
 	const getTaskTag = (task: any): TaskTag | null => {
@@ -650,11 +812,12 @@
 	};
 
 	const sharedWithText = (task: any) => {
-		if (task?.is_shared_with_me) return 'Compartida contigo';
+		if (task?.is_shared_with_me) return "Compartida contigo";
 		const labels = (task?.shared_with_labels ?? []) as string[];
-		if (labels.length === 0) return task?.is_shared ? 'Compartida' : '';
+		if (labels.length === 0) return task?.is_shared ? "Compartida" : "";
 		if (labels.length === 1) return `Compartida con: ${labels[0]}`;
-		if (labels.length === 2) return `Compartida con: ${labels[0]} y ${labels[1]}`;
+		if (labels.length === 2)
+			return `Compartida con: ${labels[0]} y ${labels[1]}`;
 		return `Compartida con: ${labels[0]} y ${labels.length - 1} más`;
 	};
 
@@ -662,17 +825,18 @@
 		const ids = [...sharedIds];
 		const labels = ids.map((id) => {
 			const contact = contacts.find((c) => c.id === id);
-			return contact ? contactLabel(contact) : 'contacto';
+			return contact ? contactLabel(contact) : "contacto";
 		});
 		tasks = tasks.map((t) =>
 			t.id === taskId
 				? {
 						...t,
-						is_shared: labels.length > 0 || Boolean(t.is_shared_with_me),
+						is_shared:
+							labels.length > 0 || Boolean(t.is_shared_with_me),
 						shared_with_labels: labels,
-						shared_with_ids: ids
+						shared_with_ids: ids,
 					}
-				: t
+				: t,
 		);
 	};
 
@@ -681,24 +845,25 @@
 		if (!name) return;
 
 		if (!supabase) {
-			alert('Supabase no está configurado.');
+			alert("Supabase no está configurado.");
 			return;
 		}
 
 		const { data, error } = await supabase
-			.from('tags')
+			.from("tags")
 			.insert([{ name, color: newTagColor, board_id: Number(boardId) }])
-			.select('id, name, color')
+			.select("id, name, color")
 			.single();
 
 		if (error) {
-			alert('Error al crear etiqueta: ' + error.message);
+			alert("Error al crear etiqueta: " + error.message);
 			return;
 		}
 
-		if (data) tags = [...tags, data].sort((a, b) => a.name.localeCompare(b.name));
-		newTagName = '';
-		newTagColor = '#feef4c';
+		if (data)
+			tags = [...tags, data].sort((a, b) => a.name.localeCompare(b.name));
+		newTagName = "";
+		newTagColor = "#feef4c";
 	};
 
 	const saveTagEdit = async () => {
@@ -707,22 +872,30 @@
 		if (!name) return;
 
 		if (supabase) {
-			const { error } = await supabase.from('tags').update({ name, color: editTagColor }).eq('id', tagToEdit);
+			const { error } = await supabase
+				.from("tags")
+				.update({ name, color: editTagColor })
+				.eq("id", tagToEdit);
 			if (error) {
-				alert('Error al actualizar etiqueta: ' + error.message);
+				alert("Error al actualizar etiqueta: " + error.message);
 				return;
 			}
 		}
-		
-		tags = tags.map(t => t.id === tagToEdit ? { ...t, name, color: editTagColor } : t);
+
+		tags = tags.map((t) =>
+			t.id === tagToEdit ? { ...t, name, color: editTagColor } : t,
+		);
 		tagToEdit = null;
 	};
 
 	const deleteTag = async (tagId: number) => {
 		if (supabase) {
-			const { error } = await supabase.from('tags').delete().eq('id', tagId);
+			const { error } = await supabase
+				.from("tags")
+				.delete()
+				.eq("id", tagId);
 			if (error) {
-				alert('Error al eliminar etiqueta: ' + error.message);
+				alert("Error al eliminar etiqueta: " + error.message);
 				return;
 			}
 		}
@@ -762,12 +935,12 @@
 
 		if (supabase) {
 			const { error } = await supabase
-				.from('tasks')
+				.from("tasks")
 				.update({ is_completed: task.is_completed })
-				.eq('id', id);
+				.eq("id", id);
 			if (error) {
 				task.is_completed = previous;
-				alert('Error al actualizar: ' + error.message);
+				alert("Error al actualizar: " + error.message);
 				return;
 			}
 		}
@@ -776,7 +949,7 @@
 	};
 
 	const openNewTask = () => {
-		newTaskTitle = '';
+		newTaskTitle = "";
 		selectedTagId = null;
 		showNewTask = true;
 	};
@@ -789,17 +962,17 @@
 			title: newTaskTitle.trim(),
 			is_completed: false,
 			board_id: Number(boardId),
-			status: 'backlog',
+			status: "backlog",
 			order_index: tasks.length,
-			novedad: '',
+			novedad: "",
 			date: newTaskStartDate,
 			end_date: newTaskEndDate || null,
-			tag_id: selectedTagId
+			tag_id: selectedTagId,
 		};
-		
+
 		const tempId = -Date.now();
 		const sharedWithIds = [...newTaskSharedWith];
-		
+
 		tasks = [
 			...tasks,
 			{
@@ -808,59 +981,72 @@
 				tags: tag,
 				is_shared: sharedWithIds.length > 0,
 				shared_with_ids: sharedWithIds,
-				has_lists: false
-			}
+				has_lists: false,
+			},
 		];
-		
-		newTaskTitle = '';
+
+		newTaskTitle = "";
 		selectedTagId = null;
-		newTaskStartDate = new Date().toISOString().split('T')[0];
-		newTaskEndDate = '';
+		newTaskStartDate = new Date().toISOString().split("T")[0];
+		newTaskEndDate = "";
 		newTaskSharedWith = [];
 		showNewTask = false;
 
 		if (!supabase) return;
 
 		const { data, error } = await supabase
-			.from('tasks')
+			.from("tasks")
 			.insert([payload])
-			.select('*, tags(id, name, color)');
+			.select("*, tags(id, name, color)");
 
 		if (error) {
 			tasks = tasks.filter((t) => t.id !== tempId);
-			alert('Error al crear tarea: ' + error.message);
+			alert("Error al crear tarea: " + error.message);
 			return;
 		}
 
 		if (data?.[0]) {
 			const createdTask = data[0];
-			let finalTask = { 
-				...createdTask, 
-				has_lists: false, 
-				is_shared: sharedWithIds.length > 0, 
-				shared_with_ids: sharedWithIds 
+			let finalTask = {
+				...createdTask,
+				has_lists: false,
+				is_shared: sharedWithIds.length > 0,
+				shared_with_ids: sharedWithIds,
 			};
 
 			if (sharedWithIds.length > 0) {
-				const sharesToInsert = sharedWithIds.map(contactId => ({
+				const sharesToInsert = sharedWithIds.map((contactId) => ({
 					task_id: createdTask.id,
-					shared_with: contactId
+					shared_with: contactId,
 				}));
 				// Ejecutamos silenciosamente
-				supabase.from('task_shares').insert(sharesToInsert).then(({error: shareError}) => {
-					if (shareError) console.error('Error sharing task:', shareError);
-				});
+				supabase
+					.from("task_shares")
+					.insert(sharesToInsert)
+					.then(({ error: shareError }) => {
+						if (shareError)
+							console.error("Error sharing task:", shareError);
+					});
 
 				// Automatically share board
-				const boardSharesToUpsert = sharedWithIds.map(contactId => ({
+				const boardSharesToUpsert = sharedWithIds.map((contactId) => ({
 					board_id: Number(boardId),
-					shared_with: contactId
+					shared_with: contactId,
 				}));
-				supabase.from('board_shares').upsert(boardSharesToUpsert, { onConflict: 'board_id, shared_with' }).then(({error: boardShareError}) => {
-					if (boardShareError) console.error('Error sharing board:', boardShareError);
-				});
+				supabase
+					.from("board_shares")
+					.upsert(boardSharesToUpsert, {
+						onConflict: "board_id, shared_with",
+					})
+					.then(({ error: boardShareError }) => {
+						if (boardShareError)
+							console.error(
+								"Error sharing board:",
+								boardShareError,
+							);
+					});
 			}
-			
+
 			tasks = tasks.map((t) => (t.id === tempId ? finalTask : t));
 		}
 
@@ -874,12 +1060,12 @@
 		if (!supabase) return;
 
 		const { data, error } = await supabase
-			.from('task_shares')
-			.select('shared_with')
-			.eq('task_id', taskId);
+			.from("task_shares")
+			.select("shared_with")
+			.eq("task_id", taskId);
 
 		if (error) {
-			console.warn('Error al cargar compartidos:', error.message);
+			console.warn("Error al cargar compartidos:", error.message);
 			return;
 		}
 
@@ -894,8 +1080,14 @@
 		linkNotesLoading = true;
 		if (supabase) {
 			const [foldersRes, notesRes] = await Promise.all([
-				supabase.from('note_folders').select('id, name').order('created_at', { ascending: true }),
-				supabase.from('notes').select('id, folder_id, title').order('updated_at', { ascending: false })
+				supabase
+					.from("note_folders")
+					.select("id, name")
+					.order("created_at", { ascending: true }),
+				supabase
+					.from("notes")
+					.select("id, folder_id, title")
+					.order("updated_at", { ascending: false }),
 			]);
 			linkableFolders = foldersRes.data || [];
 			linkableNotes = notesRes.data || [];
@@ -905,32 +1097,38 @@
 
 	const linkNoteToTask = async (note: any) => {
 		if (!selectedTaskId || !supabase) return;
-		const { error } = await supabase.from('tasks').update({ linked_note_id: note.id }).eq('id', selectedTaskId);
+		const { error } = await supabase
+			.from("tasks")
+			.update({ linked_note_id: note.id })
+			.eq("id", selectedTaskId);
 		if (!error) {
 			selectedTaskLinkedNoteId = note.id;
 			selectedTaskLinkedNoteTitle = note.title;
 			showLinkNoteModal = false;
-			const t = tasks.find(x => x.id === selectedTaskId);
+			const t = tasks.find((x) => x.id === selectedTaskId);
 			if (t) t.linked_note_id = note.id;
-			taskActionSuccess = 'Nota vinculada correctamente';
-			setTimeout(() => taskActionSuccess = '', 3000);
+			taskActionSuccess = "Nota vinculada correctamente";
+			setTimeout(() => (taskActionSuccess = ""), 3000);
 		} else {
-			taskActionError = error.message.includes('linked_note_id') 
-				? "Falta crear la columna 'linked_note_id' tipo UUID en la tabla tasks en Supabase." 
+			taskActionError = error.message.includes("linked_note_id")
+				? "Falta crear la columna 'linked_note_id' tipo UUID en la tabla tasks en Supabase."
 				: error.message;
 		}
 	};
 
 	const unlinkNoteFromTask = async () => {
 		if (!selectedTaskId || !supabase) return;
-		const { error } = await supabase.from('tasks').update({ linked_note_id: null }).eq('id', selectedTaskId);
+		const { error } = await supabase
+			.from("tasks")
+			.update({ linked_note_id: null })
+			.eq("id", selectedTaskId);
 		if (!error) {
 			selectedTaskLinkedNoteId = null;
 			selectedTaskLinkedNoteTitle = null;
-			const t = tasks.find(x => x.id === selectedTaskId);
+			const t = tasks.find((x) => x.id === selectedTaskId);
 			if (t) t.linked_note_id = null;
-			taskActionSuccess = 'Nota desvinculada';
-			setTimeout(() => taskActionSuccess = '', 3000);
+			taskActionSuccess = "Nota desvinculada";
+			setTimeout(() => (taskActionSuccess = ""), 3000);
 		} else {
 			taskActionError = error.message;
 		}
@@ -941,24 +1139,24 @@
 		if (!supabase) return;
 
 		listsLoading = true;
-		listaError = '';
+		listaError = "";
 
 		const { data, error } = await supabase
-			.from('task_lists')
-			.select('id, task_id, name')
-			.eq('task_id', taskId)
-			.order('created_at', { ascending: false });
+			.from("task_lists")
+			.select("id, task_id, name")
+			.eq("task_id", taskId)
+			.order("created_at", { ascending: false });
 
 		if (error) {
 			listsLoading = false;
 			listaError = listsTableMissing(error.message)
-				? 'Falta crear las tablas de listas en Supabase. Ejecuta el SQL 007_task_lists.sql'
+				? "Falta crear las tablas de listas en Supabase. Ejecuta el SQL 007_task_lists.sql"
 				: error.message;
 			return;
 		}
 
 		taskLists = data ?? [];
-		
+
 		const listIds = taskLists.map((l) => l.id);
 		if (listIds.length === 0) {
 			selectedListItems = [];
@@ -967,13 +1165,13 @@
 		}
 
 		const { data: itemsData, error: itemsError } = await supabase
-			.from('task_list_items')
-			.select('id, list_id, title, is_completed, order_index')
-			.in('list_id', listIds)
-			.order('order_index', { ascending: true });
+			.from("task_list_items")
+			.select("id, list_id, title, is_completed, order_index")
+			.in("list_id", listIds)
+			.order("order_index", { ascending: true });
 
 		if (itemsError) {
-			console.warn('Error cargando list items:', itemsError.message);
+			console.warn("Error cargando list items:", itemsError.message);
 		} else if (itemsData) {
 			const itemsByList: Record<string, any[]> = {};
 			itemsData.forEach((it) => {
@@ -985,7 +1183,7 @@
 				return {
 					...l,
 					item_count: items.length,
-					done_count: items.filter((i: any) => i.is_completed).length
+					done_count: items.filter((i: any) => i.is_completed).length,
 				};
 			});
 		}
@@ -998,25 +1196,42 @@
 		if (!supabase) return;
 
 		const { data, error } = await supabase
-			.from('task_comments')
-			.select('*')
-			.eq('task_id', taskId)
-			.order('created_at', { ascending: true });
+			.from("task_comments")
+			.select("*")
+			.eq("task_id", taskId)
+			.order("created_at", { ascending: true });
 
 		if (error) {
-			console.warn('Error al cargar comentarios:', error.message);
+			console.warn("Error al cargar comentarios:", error.message);
 		} else {
-			const { data: { session } } = await supabase.auth.getSession();
+			const {
+				data: { session },
+			} = await supabase.auth.getSession();
 			const me = session?.user;
-			
-			taskComments = (data ?? []).map(comment => {
-				let userData = { email: 'Usuario', raw_user_meta_data: { name: 'Usuario' } };
+
+			taskComments = (data ?? []).map((comment) => {
+				let userData = {
+					email: "Usuario",
+					raw_user_meta_data: { name: "Usuario" },
+				};
 				if (me && me.id === comment.user_id) {
-					userData = { email: me.email || 'Usuario', raw_user_meta_data: { name: (me.user_metadata as any)?.name || 'Usuario' } };
+					userData = {
+						email: me.email || "Usuario",
+						raw_user_meta_data: {
+							name: (me.user_metadata as any)?.name || "Usuario",
+						},
+					};
 				} else {
-					const contact = contacts.find(c => c.id === comment.user_id);
+					const contact = contacts.find(
+						(c) => c.id === comment.user_id,
+					);
 					if (contact) {
-						userData = { email: contact.email, raw_user_meta_data: { name: contact.display_name || contact.nickname } };
+						userData = {
+							email: contact.email,
+							raw_user_meta_data: {
+								name: contact.display_name || contact.nickname,
+							},
+						};
 					}
 				}
 				return { ...comment, user: userData };
@@ -1026,25 +1241,31 @@
 
 	const addTaskComment = async () => {
 		if (!newCommentText.trim() || !selectedTaskId || !supabase) return;
-		const { data: { session } } = await supabase.auth.getSession();
+		const {
+			data: { session },
+		} = await supabase.auth.getSession();
 		if (!session) return;
-		
-		const { data, error } = await supabase.from('task_comments').insert({
-			task_id: selectedTaskId,
-			user_id: session.user.id,
-			content: newCommentText.trim()
-		}).select('*').single();
+
+		const { data, error } = await supabase
+			.from("task_comments")
+			.insert({
+				task_id: selectedTaskId,
+				user_id: session.user.id,
+				content: newCommentText.trim(),
+			})
+			.select("*")
+			.single();
 
 		if (data) {
 			const newComment = {
 				...data,
 				user: {
 					email: session.user.email,
-					raw_user_meta_data: session.user.user_metadata
-				}
+					raw_user_meta_data: session.user.user_metadata,
+				},
 			};
 			taskComments = [...taskComments, newComment];
-			newCommentText = '';
+			newCommentText = "";
 		} else if (error) {
 			console.error("Error al añadir comentario:", error.message);
 			alert("Error al añadir comentario: " + error.message);
@@ -1057,12 +1278,12 @@
 		if (!supabase) return;
 
 		listDetailLoading = true;
-		listaError = '';
+		listaError = "";
 		const { data, error } = await supabase
-			.from('task_list_items')
-			.select('id, list_id, title, is_completed, order_index')
-			.eq('list_id', list.id)
-			.order('order_index', { ascending: true });
+			.from("task_list_items")
+			.select("id, list_id, title, is_completed, order_index")
+			.eq("list_id", list.id)
+			.order("order_index", { ascending: true });
 
 		listDetailLoading = false;
 		if (error) {
@@ -1075,31 +1296,43 @@
 	const openTaskUpdate = async (task: any) => {
 		try {
 			selectedTaskId = task.id;
-			selectedTaskTitle = task.title || '';
-			editingNovedad = task.novedad || '';
-			editingDescription = task.description || '';
-			
+			selectedTaskTitle = task.title || "";
+			editingNovedad = task.novedad || "";
+			editingDescription = task.description || "";
+
 			selectedTaskLinkedNoteId = task.linked_note_id || null;
 			selectedTaskLinkedNoteTitle = null;
 			if (selectedTaskLinkedNoteId && supabase) {
-				const { data } = await supabase.from('notes').select('title').eq('id', selectedTaskLinkedNoteId).single();
+				const { data } = await supabase
+					.from("notes")
+					.select("title")
+					.eq("id", selectedTaskLinkedNoteId)
+					.single();
 				if (data) selectedTaskLinkedNoteTitle = data.title;
 			}
 
-			editingDate = '';
+			editingDate = "";
 			if (task.date) {
-				try { editingDate = new Date(task.date).toISOString().slice(0, 16); } catch (e) {}
+				try {
+					editingDate = new Date(task.date)
+						.toISOString()
+						.slice(0, 16);
+				} catch (e) {}
 			}
-			
-			editingEndDate = '';
+
+			editingEndDate = "";
 			if (task.end_date) {
-				try { editingEndDate = new Date(task.end_date).toISOString().slice(0, 16); } catch (e) {}
+				try {
+					editingEndDate = new Date(task.end_date)
+						.toISOString()
+						.slice(0, 16);
+				} catch (e) {}
 			}
 			editingTagId = task.tag_id ?? getTaskTag(task)?.id ?? null;
 			closeListModals();
-			taskPanel = 'menu';
-			taskActionError = '';
-			taskActionSuccess = '';
+			taskPanel = "menu";
+			taskActionError = "";
+			taskActionSuccess = "";
 			showTaskOptions = false;
 			showTaskUpdate = true;
 			await loadTaskShares(task.id);
@@ -1107,17 +1340,19 @@
 			await loadTaskComments(task.id);
 		} catch (e) {
 			console.error("Error al abrir tarea:", e);
-			alert("Error al abrir tarea: " + ((e as Error).message || String(e)));
+			alert(
+				"Error al abrir tarea: " + ((e as Error).message || String(e)),
+			);
 		}
 	};
 
 	const setTaskPanel = (panel: TaskPanel) => {
-		if (panel !== 'listas') {
+		if (panel !== "listas") {
 			closeListModals();
 		}
 		taskPanel = panel;
-		taskActionError = '';
-		taskActionSuccess = '';
+		taskActionError = "";
+		taskActionSuccess = "";
 		showTaskOptions = false;
 	};
 
@@ -1125,12 +1360,12 @@
 		showCrearListaModal = false;
 		showVerListasModal = false;
 		showEditListModal = false;
-		listaError = '';
-		newListName = '';
+		listaError = "";
+		newListName = "";
 		draftListItems = [];
-		newDraftItem = '';
-		editListName = '';
-		newListItemTitle = '';
+		newDraftItem = "";
+		editListName = "";
+		newListItemTitle = "";
 		selectedList = null;
 		selectedListItems = [];
 		// Note: intentionally NOT clearing taskLists here so the checklist panel stays populated
@@ -1139,16 +1374,16 @@
 	const openEditListModal = () => {
 		if (!selectedList) return;
 		editListName = selectedList.name;
-		newListItemTitle = '';
-		listaError = '';
+		newListItemTitle = "";
+		listaError = "";
 		showEditListModal = true;
 	};
 
 	const closeEditListModal = () => {
 		showEditListModal = false;
-		editListName = '';
-		newListItemTitle = '';
-		listaSuccess = '';
+		editListName = "";
+		newListItemTitle = "";
+		listaSuccess = "";
 		if (listaSuccessTimer) {
 			clearTimeout(listaSuccessTimer);
 			listaSuccessTimer = null;
@@ -1159,14 +1394,14 @@
 		if (!supabase || !selectedList) return;
 		const name = editListName.trim();
 		if (!name) {
-			listaError = 'Escribe un nombre para la lista.';
+			listaError = "Escribe un nombre para la lista.";
 			return;
 		}
 
 		const { error } = await supabase
-			.from('task_lists')
+			.from("task_lists")
 			.update({ name })
-			.eq('id', selectedList.id);
+			.eq("id", selectedList.id);
 
 		if (error) {
 			listaError = error.message;
@@ -1175,7 +1410,7 @@
 
 		selectedList = { ...selectedList, name };
 		taskLists = taskLists.map((list) =>
-			list.id === selectedList?.id ? { ...list, name } : list
+			list.id === selectedList?.id ? { ...list, name } : list,
 		);
 		closeEditListModal();
 	};
@@ -1184,7 +1419,7 @@
 		listaSuccess = message;
 		if (listaSuccessTimer) clearTimeout(listaSuccessTimer);
 		listaSuccessTimer = setTimeout(() => {
-			listaSuccess = '';
+			listaSuccess = "";
 			listaSuccessTimer = null;
 		}, 2200);
 	};
@@ -1194,16 +1429,16 @@
 		const title = newListItemTitle.trim();
 		if (!title) return;
 
-		listaError = '';
+		listaError = "";
 		const { data, error } = await supabase
-			.from('task_list_items')
+			.from("task_list_items")
 			.insert({
 				list_id: selectedList.id,
 				title,
 				is_completed: false,
-				order_index: selectedListItems.length
+				order_index: selectedListItems.length,
 			})
-			.select('id, list_id, title, is_completed, order_index')
+			.select("id, list_id, title, is_completed, order_index")
 			.single();
 
 		if (error) {
@@ -1213,27 +1448,29 @@
 
 		if (data) {
 			selectedListItems = [...selectedListItems, data];
-			newListItemTitle = '';
+			newListItemTitle = "";
 			taskLists = taskLists.map((list) =>
 				list.id === selectedList?.id
 					? {
 							...list,
 							item_count: selectedListItems.length,
-							done_count: selectedListItems.filter((i) => i.is_completed).length
+							done_count: selectedListItems.filter(
+								(i) => i.is_completed,
+							).length,
 						}
-					: list
+					: list,
 			);
-			showListaToast('Ítem agregado');
+			showListaToast("Ítem agregado");
 		}
 	};
 
 	const openCrearListaModal = () => {
 		if (selectedTaskId === null) return;
-		listaError = '';
-		newListName = '';
+		listaError = "";
+		newListName = "";
 		draftListItems = [];
-		newDraftItem = '';
-		taskPanel = 'listas';
+		newDraftItem = "";
+		taskPanel = "listas";
 		showVerListasModal = false;
 		showEditListModal = false;
 		showCrearListaModal = true;
@@ -1241,10 +1478,10 @@
 
 	const openVerListasModal = async () => {
 		if (selectedTaskId === null) return;
-		listaError = '';
+		listaError = "";
 		selectedList = null;
 		selectedListItems = [];
-		taskPanel = 'listas';
+		taskPanel = "listas";
 		showCrearListaModal = false;
 		showEditListModal = false;
 		showVerListasModal = true;
@@ -1258,19 +1495,24 @@
 
 	const cancelEditChecklist = () => {
 		editChecklistId = null;
-		editChecklistName = '';
+		editChecklistName = "";
 	};
 
 	const saveEditChecklist = async () => {
 		if (!editChecklistId || !editChecklistName.trim() || !supabase) return;
 		const id = editChecklistId;
 		const newName = editChecklistName.trim();
-		const { error } = await supabase.from('task_lists').update({ name: newName }).eq('id', id);
+		const { error } = await supabase
+			.from("task_lists")
+			.update({ name: newName })
+			.eq("id", id);
 		if (error) {
-			alert('Error al actualizar checklist: ' + error.message);
+			alert("Error al actualizar checklist: " + error.message);
 			return;
 		}
-		taskLists = taskLists.map((list) => (list.id === id ? { ...list, name: newName } : list));
+		taskLists = taskLists.map((list) =>
+			list.id === id ? { ...list, name: newName } : list,
+		);
 		cancelEditChecklist();
 	};
 
@@ -1281,19 +1523,24 @@
 
 	const cancelEditListItem = () => {
 		editListItemId = null;
-		editListItemTitle = '';
+		editListItemTitle = "";
 	};
 
 	const saveEditListItem = async () => {
 		if (!editListItemId || !editListItemTitle.trim() || !supabase) return;
 		const id = editListItemId;
 		const newTitle = editListItemTitle.trim();
-		const { error } = await supabase.from('task_list_items').update({ title: newTitle }).eq('id', id);
+		const { error } = await supabase
+			.from("task_list_items")
+			.update({ title: newTitle })
+			.eq("id", id);
 		if (error) {
-			alert('Error al actualizar ítem: ' + error.message);
+			alert("Error al actualizar ítem: " + error.message);
 			return;
 		}
-		selectedListItems = selectedListItems.map((item) => (item.id === id ? { ...item, title: newTitle } : item));
+		selectedListItems = selectedListItems.map((item) =>
+			item.id === id ? { ...item, title: newTitle } : item,
+		);
 		cancelEditListItem();
 	};
 
@@ -1301,17 +1548,17 @@
 		if (!supabase) return;
 		const nextValue = !item.is_completed;
 		selectedListItems = selectedListItems.map((row) =>
-			row.id === item.id ? { ...row, is_completed: nextValue } : row
+			row.id === item.id ? { ...row, is_completed: nextValue } : row,
 		);
 
 		const { error } = await supabase
-			.from('task_list_items')
+			.from("task_list_items")
 			.update({ is_completed: nextValue })
-			.eq('id', item.id);
+			.eq("id", item.id);
 
 		if (error) {
 			selectedListItems = selectedListItems.map((row) =>
-				row.id === item.id ? { ...row, is_completed: !nextValue } : row
+				row.id === item.id ? { ...row, is_completed: !nextValue } : row,
 			);
 			listaError = error.message;
 			return;
@@ -1322,10 +1569,12 @@
 				list.id === selectedList?.id
 					? {
 							...list,
-							done_count: selectedListItems.filter((i) => i.is_completed).length,
-							item_count: selectedListItems.length
+							done_count: selectedListItems.filter(
+								(i) => i.is_completed,
+							).length,
+							item_count: selectedListItems.length,
 						}
-					: list
+					: list,
 			);
 		}
 	};
@@ -1333,9 +1582,14 @@
 	const deleteListItem = async (itemId: number) => {
 		if (!supabase) return;
 		const previous = selectedListItems;
-		selectedListItems = selectedListItems.filter((row) => row.id !== itemId);
+		selectedListItems = selectedListItems.filter(
+			(row) => row.id !== itemId,
+		);
 
-		const { error } = await supabase.from('task_list_items').delete().eq('id', itemId);
+		const { error } = await supabase
+			.from("task_list_items")
+			.delete()
+			.eq("id", itemId);
 		if (error) {
 			selectedListItems = previous;
 			listaError = error.message;
@@ -1348,18 +1602,23 @@
 					? {
 							...list,
 							item_count: selectedListItems.length,
-							done_count: selectedListItems.filter((i) => i.is_completed).length
+							done_count: selectedListItems.filter(
+								(i) => i.is_completed,
+							).length,
 						}
-					: list
+					: list,
 			);
 		}
 	};
 
 	const deleteTaskList = async (listId: number) => {
 		if (!supabase) return;
-		if (!confirm('¿Eliminar esta lista y todos sus ítems?')) return;
+		if (!confirm("¿Eliminar esta lista y todos sus ítems?")) return;
 
-		const { error } = await supabase.from('task_lists').delete().eq('id', listId);
+		const { error } = await supabase
+			.from("task_lists")
+			.delete()
+			.eq("id", listId);
 		if (error) {
 			listaError = error.message;
 			return;
@@ -1381,7 +1640,7 @@
 
 		const title = selectedTaskTitle.trim();
 		if (!title) {
-			taskActionError = 'El título no puede estar vacío.';
+			taskActionError = "El título no puede estar vacío.";
 			return;
 		}
 
@@ -1395,7 +1654,7 @@
 			novedad: tasks[taskIndex].novedad,
 			description: tasks[taskIndex].description,
 			date: tasks[taskIndex].date,
-			end_date: tasks[taskIndex].end_date
+			end_date: tasks[taskIndex].end_date,
 		};
 		const nextTag = tags.find((t) => t.id === editingTagId) ?? null;
 
@@ -1407,20 +1666,20 @@
 		tasks[taskIndex].date = editingDate || null;
 		tasks[taskIndex].end_date = editingEndDate || null;
 		selectedTaskTitle = title;
-		taskActionError = '';
+		taskActionError = "";
 
 		if (supabase) {
 			const { error } = await supabase
-				.from('tasks')
-				.update({ 
-					title, 
-					tag_id: editingTagId, 
+				.from("tasks")
+				.update({
+					title,
+					tag_id: editingTagId,
 					novedad: editingNovedad,
 					description: editingDescription,
 					date: editingDate || null,
-					end_date: editingEndDate || null
+					end_date: editingEndDate || null,
 				})
-				.eq('id', selectedTaskId);
+				.eq("id", selectedTaskId);
 			if (error) {
 				tasks[taskIndex].title = previous.title;
 				tasks[taskIndex].tag_id = previous.tag_id;
@@ -1435,7 +1694,7 @@
 			}
 		}
 
-		taskActionSuccess = 'Tarea actualizada.';
+		taskActionSuccess = "Tarea actualizada.";
 	};
 
 	const saveNovedad = async () => {
@@ -1447,9 +1706,9 @@
 			tasks[taskIndex].novedad = editingNovedad;
 			if (supabase) {
 				const { error } = await supabase
-					.from('tasks')
+					.from("tasks")
 					.update({ novedad: editingNovedad })
-					.eq('id', selectedTaskId);
+					.eq("id", selectedTaskId);
 				if (error) {
 					tasks[taskIndex].novedad = previous;
 					taskActionError = error.message;
@@ -1457,26 +1716,26 @@
 				}
 			}
 		}
-		taskActionSuccess = 'Novedad guardada.';
-		taskPanel = 'menu';
+		taskActionSuccess = "Novedad guardada.";
+		taskPanel = "menu";
 	};
 
 	const toggleShareWithContact = async (contactId: string) => {
 		if (!supabase || selectedTaskId === null) return;
 
 		shareBusyId = contactId;
-		taskActionError = '';
-		taskActionSuccess = '';
+		taskActionError = "";
+		taskActionSuccess = "";
 
 		try {
 			const alreadyShared = sharedWithIds.has(contactId);
 
 			if (alreadyShared) {
 				const { error } = await supabase
-					.from('task_shares')
+					.from("task_shares")
 					.delete()
-					.eq('task_id', selectedTaskId)
-					.eq('shared_with', contactId);
+					.eq("task_id", selectedTaskId)
+					.eq("shared_with", contactId);
 
 				if (error) {
 					taskActionError = error.message;
@@ -1487,41 +1746,47 @@
 				next.delete(contactId);
 				sharedWithIds = next;
 				refreshTaskShareLabels(selectedTaskId, next);
-				taskActionSuccess = 'Se dejó de compartir con ese contacto.';
+				taskActionSuccess = "Se dejó de compartir con ese contacto.";
 			} else {
 				const {
-					data: { session }
+					data: { session },
 				} = await supabase.auth.getSession();
 				const me = session?.user?.id;
 				if (!me) {
-					taskActionError = 'Debes iniciar sesión.';
+					taskActionError = "Debes iniciar sesión.";
 					return;
 				}
 
-				const { error } = await supabase.from('task_shares').insert({
+				const { error } = await supabase.from("task_shares").insert({
 					task_id: selectedTaskId,
 					shared_with: contactId,
-					shared_by: me
+					shared_by: me,
 				});
 
 				if (error) {
-					taskActionError = /task_shares|schema cache|does not exist/i.test(error.message)
-						? 'Falta crear la tabla task_shares en Supabase. Ejecuta el SQL 005_task_shares.sql'
-						: error.message;
+					taskActionError =
+						/task_shares|schema cache|does not exist/i.test(
+							error.message,
+						)
+							? "Falta crear la tabla task_shares en Supabase. Ejecuta el SQL 005_task_shares.sql"
+							: error.message;
 					return;
 				}
-				
+
 				// Automatically share board
-				await supabase.from('board_shares').upsert({
-					board_id: Number(boardId),
-					shared_with: contactId
-				}, { onConflict: 'board_id, shared_with' });
+				await supabase.from("board_shares").upsert(
+					{
+						board_id: Number(boardId),
+						shared_with: contactId,
+					},
+					{ onConflict: "board_id, shared_with" },
+				);
 
 				const next = new Set(sharedWithIds);
 				next.add(contactId);
 				sharedWithIds = next;
 				refreshTaskShareLabels(selectedTaskId, next);
-				taskActionSuccess = 'Tarea compartida.';
+				taskActionSuccess = "Tarea compartida.";
 			}
 		} finally {
 			shareBusyId = null;
@@ -1543,10 +1808,13 @@
 		showTaskOptions = false;
 
 		if (supabase) {
-			const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+			const { error } = await supabase
+				.from("tasks")
+				.delete()
+				.eq("id", taskId);
 			if (error) {
 				tasks = previous;
-				alert('Error al eliminar la tarea: ' + error.message);
+				alert("Error al eliminar la tarea: " + error.message);
 				return;
 			}
 		}
@@ -1557,12 +1825,14 @@
 	const setDate = (offset: number) => {
 		const d = new Date();
 		d.setDate(d.getDate() + offset);
-		d.setHours(0,0,0,0);
+		d.setHours(0, 0, 0, 0);
 		selectedDate = d;
 	};
 
 	const isSameDay = (a: Date, b: Date) =>
-		a.getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear();
+		a.getDate() === b.getDate() &&
+		a.getMonth() === b.getMonth() &&
+		a.getFullYear() === b.getFullYear();
 
 	const isToday = (d: Date) => isSameDay(d, new Date());
 
@@ -1576,8 +1846,8 @@
 	const dayTabClass = (active: boolean) =>
 		`flex-1 py-2.5 rounded-xl text-center transition-colors ${
 			active
-				? 'bg-brand-accent text-brand-bg font-semibold'
-				: 'text-brand-text-muted hover:text-brand-text'
+				? "bg-brand-accent text-brand-bg font-semibold"
+				: "text-brand-text-muted hover:text-brand-text"
 		}`;
 
 	// Handlers para el drag and drop
@@ -1598,37 +1868,49 @@
 				date: t.date,
 				order_index: index,
 				novedad: t.novedad,
-				tag_id: t.tag_id ?? null
+				tag_id: t.tag_id ?? null,
 			}));
-			await supabase.from('tasks').upsert(updates);
+			await supabase.from("tasks").upsert(updates);
 		}
 	};
 
 	// Cálculo de progreso
-	let progress = $derived(tasks.length > 0 ? Math.round((tasks.filter(t => t.is_completed).length / tasks.length) * 100) : 0);
+	let progress = $derived(
+		tasks.length > 0
+			? Math.round(
+					(tasks.filter((t) => t.is_completed).length /
+						tasks.length) *
+						100,
+				)
+			: 0,
+	);
 
 	let hasActiveFilters = $derived(
-		filterStatus !== 'all' ||
+		filterStatus !== "all" ||
 			filterTagIds.length > 0 ||
 			filterSharedWithIds.length > 0 ||
 			filterSharedOnly ||
 			filterHasLists ||
-			filterHasNovedad
+			filterHasNovedad,
 	);
 
 	let filteredTasks = $derived.by(() => {
 		if (!hasActiveFilters) return tasks;
 
 		return tasks.filter((task) => {
-			if (filterStatus === 'pending' && task.is_completed) return false;
-			if (filterStatus === 'completed' && !task.is_completed) return false;
+			if (filterStatus === "pending" && task.is_completed) return false;
+			if (filterStatus === "completed" && !task.is_completed)
+				return false;
 
 			if (filterTagIds.length > 0) {
 				const tag = getTaskTag(task);
 				if (!tag || !filterTagIds.includes(tag.id)) return false;
 			}
 
-			if (filterHasNovedad && !(typeof task.novedad === 'string' && task.novedad.trim())) {
+			if (
+				filterHasNovedad &&
+				!(typeof task.novedad === "string" && task.novedad.trim())
+			) {
 				return false;
 			}
 
@@ -1638,7 +1920,12 @@
 				if (!task.is_shared) return false;
 				if (filterSharedWithIds.length > 0) {
 					const sharedIds = (task.shared_with_ids ?? []) as string[];
-					if (!filterSharedWithIds.some((id) => sharedIds.includes(id))) return false;
+					if (
+						!filterSharedWithIds.some((id) =>
+							sharedIds.includes(id),
+						)
+					)
+						return false;
 				}
 			}
 
@@ -1660,7 +1947,7 @@
 	};
 
 	const clearFilters = () => {
-		filterStatus = 'all';
+		filterStatus = "all";
 		filterTagIds = [];
 		filterSharedWithIds = [];
 		filterSharedOnly = false;
@@ -1670,35 +1957,39 @@
 
 	const focusOnSelectedTask = () => {
 		if (selectedTaskId == null) return;
-		linkPomodoroTask(selectedTaskId, selectedTaskTitle || 'Tarea');
+		linkPomodoroTask(selectedTaskId, selectedTaskTitle || "Tarea");
 		showTaskOptions = false;
 		showTaskUpdate = false;
 		pomodoroUI.isMaximized = true;
 	};
 
-
 	// --- KANBAN LOGIC ---
 	let kanbanState = $derived.by(() => {
 		const cols: Record<string, any[]> = {};
-		boardLists.forEach(l => cols[l.id] = []);
-		tasks.forEach(t => {
+		boardLists.forEach((l) => (cols[l.id] = []));
+		tasks.forEach((t) => {
 			// Apply "Solo mías" filter
 			if (filterSharedOnly) {
-				const isMine = t.is_shared === false || (t.shared_with_ids && t.shared_with_ids.length > 0);
+				const isMine =
+					t.is_shared === false ||
+					(t.shared_with_ids && t.shared_with_ids.length > 0);
 				if (!isMine) return; // Super simple heuristic for now
 			}
-			
+
 			let targetList = t.list_id;
-			if (!targetList && boardLists.length > 0) targetList = boardLists[0].id;
-			
+			if (!targetList && boardLists.length > 0)
+				targetList = boardLists[0].id;
+
 			if (cols[targetList]) cols[targetList].push(t);
 		});
-		Object.keys(cols).forEach(k => cols[k].sort((a,b) => a.order_index - b.order_index));
+		Object.keys(cols).forEach((k) =>
+			cols[k].sort((a, b) => a.order_index - b.order_index),
+		);
 		return cols;
 	});
-	
+
 	let boardItems: Record<string, any[]> = $state({});
-	
+
 	$effect(() => {
 		boardItems = kanbanState;
 	});
@@ -1712,9 +2003,14 @@
 			if (t.order_index !== i || t.list_id !== colId) {
 				const updates = { order_index: i, list_id: colId };
 				const tempTasks = [...tasks];
-				tasks = tasks.map(tt => tt.id === t.id ? { ...tt, ...updates } : tt);
+				tasks = tasks.map((tt) =>
+					tt.id === t.id ? { ...tt, ...updates } : tt,
+				);
 				if (supabase) {
-					const {error} = await supabase.from('tasks').update(updates).eq('id', t.id);
+					const { error } = await supabase
+						.from("tasks")
+						.update(updates)
+						.eq("id", t.id);
 					if (error) {
 						tasks = tempTasks;
 						console.error(error);
@@ -1736,9 +2032,9 @@
 				board_id: Number(boardId),
 				name: l.name,
 				order_index: index,
-				color: l.color
+				color: l.color,
 			}));
-			await supabase.from('board_lists').upsert(updates);
+			await supabase.from("board_lists").upsert(updates);
 		}
 	}
 
@@ -1750,37 +2046,46 @@
 		const name = newListName.trim();
 		if (!name) return;
 		const orderIndex = boardLists.length;
-		const { data, error } = await supabase!.from('board_lists').insert({
-			board_id: Number(boardId),
-			name,
-			order_index: orderIndex,
-			color: 'bg-brand-surface'
-		}).select().single();
+		const { data, error } = await supabase!
+			.from("board_lists")
+			.insert({
+				board_id: Number(boardId),
+				name,
+				order_index: orderIndex,
+				color: "bg-brand-surface",
+			})
+			.select()
+			.single();
 		if (data) {
 			boardLists = [...boardLists, data];
 			showCrearListaModal = false;
-			newListName = '';
+			newListName = "";
 		}
 	};
 
 	const addSubtask = async () => {
-		if (!subtaskTitle.trim() || selectedTaskId === null || !supabase) return;
-		
+		if (!subtaskTitle.trim() || selectedTaskId === null || !supabase)
+			return;
+
 		const title = subtaskTitle.trim();
 		const listId = boardLists[0]?.id; // Default to first list or we can use current list
-		const currentTask = tasks.find(t => t.id === selectedTaskId);
+		const currentTask = tasks.find((t) => t.id === selectedTaskId);
 		const targetListId = currentTask ? currentTask.list_id : listId;
 		const taskDate = currentTask?.date || formatDateString(new Date());
 
-		const { data, error } = await supabase.from('tasks').insert({
-			board_id: Number(boardId),
-			list_id: targetListId,
-			title,
-			is_completed: false,
-			order_index: 0,
-			parent_task_id: selectedTaskId,
-			date: taskDate
-		}).select('*, tags(id, name, color)').single();
+		const { data, error } = await supabase
+			.from("tasks")
+			.insert({
+				board_id: Number(boardId),
+				list_id: targetListId,
+				title,
+				is_completed: false,
+				order_index: 0,
+				parent_task_id: selectedTaskId,
+				date: taskDate,
+			})
+			.select("*, tags(id, name, color)")
+			.single();
 
 		if (error) {
 			console.error("Error creating subtask:", error);
@@ -1789,7 +2094,7 @@
 
 		if (data && !error) {
 			tasks = [...tasks, data];
-			subtaskTitle = '';
+			subtaskTitle = "";
 		}
 	};
 
@@ -1797,27 +2102,35 @@
 		if (!listToEdit) return;
 		const name = editListTitle.trim();
 		if (!name) return;
-		
+
 		if (supabase) {
-			const { error } = await supabase.from('board_lists').update({ name }).eq('id', listToEdit);
+			const { error } = await supabase
+				.from("board_lists")
+				.update({ name })
+				.eq("id", listToEdit);
 			if (error) {
-				alert('Error al actualizar la lista: ' + error.message);
+				alert("Error al actualizar la lista: " + error.message);
 				return;
 			}
 		}
-		boardLists = boardLists.map(l => l.id === listToEdit ? { ...l, name } : l);
+		boardLists = boardLists.map((l) =>
+			l.id === listToEdit ? { ...l, name } : l,
+		);
 		listToEdit = null;
 	};
 
 	const confirmDeleteList = async (listId: number) => {
 		if (supabase) {
-			const { error } = await supabase.from('board_lists').delete().eq('id', listId);
+			const { error } = await supabase
+				.from("board_lists")
+				.delete()
+				.eq("id", listId);
 			if (error) {
-				alert('Error al eliminar la lista: ' + error.message);
+				alert("Error al eliminar la lista: " + error.message);
 				return;
 			}
 		}
-		boardLists = boardLists.filter(l => l.id !== listId);
+		boardLists = boardLists.filter((l) => l.id !== listId);
 		listToDelete = null;
 		await fetchTasks();
 	};
@@ -1830,38 +2143,86 @@
 
 <div class="flex-1 flex flex-col h-full bg-[#070b0e] overflow-hidden">
 	<!-- Top Toolbar -->
-	<header class="shrink-0 border-b border-brand-divider bg-brand-surface px-6 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+	<header
+		class="shrink-0 border-b border-brand-divider bg-brand-surface px-6 py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-4"
+	>
 		<div class="flex flex-wrap items-center gap-3">
-			<button onclick={() => goto('/tareas')} title="Volver a mis tableros" class="flex items-center justify-center p-2 text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated rounded-lg transition-colors border border-brand-divider shadow-sm bg-[#0d1216]">
+			<button
+				onclick={() => goto("/tareas")}
+				title="Volver a mis tableros"
+				class="flex items-center justify-center p-2 text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated rounded-lg transition-colors border border-brand-divider shadow-sm bg-[#0d1216]"
+			>
 				<ArrowLeft class="w-4 h-4" />
 			</button>
 			<div class="relative">
-				<button onclick={() => showBoardDropdown = !showBoardDropdown} class="flex items-center gap-2 text-brand-text hover:text-brand-accent transition-colors font-bold text-sm bg-[#0d1216] border border-brand-divider px-3 py-1.5 rounded-lg">
-					<span class="w-2 h-2 rounded-full" style={currentBoard ? `background-color: ${currentBoard.color}` : 'background-color: var(--color-brand-accent)'}></span>
-					{currentBoard ? currentBoard.title : 'Cargando...'}
-					<ChevronDown class="w-4 h-4 text-brand-text-muted transition-transform {showBoardDropdown ? 'rotate-180' : ''}" />
+				<button
+					onclick={() => (showBoardDropdown = !showBoardDropdown)}
+					class="flex items-center gap-2 text-brand-text hover:text-brand-accent transition-colors font-bold text-sm bg-[#0d1216] border border-brand-divider px-3 py-1.5 rounded-lg"
+				>
+					<span
+						class="w-2 h-2 rounded-full"
+						style={currentBoard
+							? `background-color: ${currentBoard.color}`
+							: "background-color: var(--color-brand-accent)"}
+					></span>
+					{currentBoard ? currentBoard.title : "Cargando..."}
+					<ChevronDown
+						class="w-4 h-4 text-brand-text-muted transition-transform {showBoardDropdown
+							? 'rotate-180'
+							: ''}"
+					/>
 				</button>
 
 				{#if showBoardDropdown}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="fixed inset-0 z-40" onclick={() => showBoardDropdown = false}></div>
-					<div class="absolute top-full left-0 mt-2 w-64 bg-brand-surface border border-brand-divider rounded-xl shadow-xl z-50 py-2">
-						<div class="px-3 pb-2 mb-2 border-b border-brand-divider">
-							<span class="text-xs font-semibold text-brand-text-muted uppercase tracking-wider">Tus Tableros</span>
+					<div
+						class="fixed inset-0 z-40"
+						onclick={() => (showBoardDropdown = false)}
+					></div>
+					<div
+						class="absolute top-full left-0 mt-2 w-64 bg-brand-surface border border-brand-divider rounded-xl shadow-xl z-50 py-2"
+					>
+						<div
+							class="px-3 pb-2 mb-2 border-b border-brand-divider"
+						>
+							<span
+								class="text-xs font-semibold text-brand-text-muted uppercase tracking-wider"
+								>Tus Tableros</span
+							>
 						</div>
 						{#each allBoards as board}
-							<button 
-								class="w-full text-left px-4 py-2 hover:bg-brand-surface-elevated transition-colors flex items-center gap-3 {board.id == boardId ? 'bg-brand-surface-elevated' : ''}"
-								onclick={() => { showBoardDropdown = false; goto('/tareas/' + board.id); }}
+							<button
+								class="w-full text-left px-4 py-2 hover:bg-brand-surface-elevated transition-colors flex items-center gap-3 {board.id ==
+								boardId
+									? 'bg-brand-surface-elevated'
+									: ''}"
+								onclick={() => {
+									showBoardDropdown = false;
+									goto("/tareas/" + board.id);
+								}}
 							>
-								<span class="w-2.5 h-2.5 rounded-full" style="background-color: {board.color}"></span>
-								<span class="text-sm font-medium {board.id == boardId ? 'text-brand-accent' : 'text-brand-text'}">{board.title}</span>
+								<span
+									class="w-2.5 h-2.5 rounded-full"
+									style="background-color: {board.color}"
+								></span>
+								<span
+									class="text-sm font-medium {board.id ==
+									boardId
+										? 'text-brand-accent'
+										: 'text-brand-text'}"
+									>{board.title}</span
+								>
 							</button>
 						{/each}
-						<div class="mt-2 pt-2 border-t border-brand-divider px-2">
-							<button 
-								onclick={() => { showBoardDropdown = false; goto('/tareas'); }}
+						<div
+							class="mt-2 pt-2 border-t border-brand-divider px-2"
+						>
+							<button
+								onclick={() => {
+									showBoardDropdown = false;
+									goto("/tareas");
+								}}
 								class="w-full text-left px-2 py-1.5 hover:bg-brand-surface-elevated transition-colors rounded-lg flex items-center gap-2 text-sm font-semibold text-brand-text-muted"
 							>
 								<List class="w-4 h-4" /> Ver todos los tableros
@@ -1870,241 +2231,351 @@
 					</div>
 				{/if}
 			</div>
-			
-			<div class="flex items-center gap-1 border border-brand-divider bg-[#0d1216] p-1 rounded-lg">
-				<button onclick={() => viewMode = 'kanban'} class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold transition-colors {viewMode === 'kanban' ? 'bg-brand-surface-elevated border border-brand-divider text-brand-accent shadow-sm' : 'text-brand-text-muted hover:text-brand-text border border-transparent'}">
+
+			<div
+				class="flex items-center gap-1 border border-brand-divider bg-[#0d1216] p-1 rounded-lg"
+			>
+				<button
+					onclick={() => (viewMode = "kanban")}
+					class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold transition-colors {viewMode ===
+					'kanban'
+						? 'bg-brand-surface-elevated border border-brand-divider text-brand-accent shadow-sm'
+						: 'text-brand-text-muted hover:text-brand-text border border-transparent'}"
+				>
 					<Kanban class="w-3.5 h-3.5" /> Kanban
 				</button>
-				<button onclick={() => viewMode = 'lista'} class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold transition-colors {viewMode === 'lista' ? 'bg-brand-surface-elevated border border-brand-divider text-brand-accent shadow-sm' : 'text-brand-text-muted hover:text-brand-text border border-transparent'}">
+				<button
+					onclick={() => (viewMode = "lista")}
+					class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold transition-colors {viewMode ===
+					'lista'
+						? 'bg-brand-surface-elevated border border-brand-divider text-brand-accent shadow-sm'
+						: 'text-brand-text-muted hover:text-brand-text border border-transparent'}"
+				>
 					<LayoutList class="w-3.5 h-3.5" /> Lista
 				</button>
-				<button onclick={() => viewMode = 'calendario'} class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold transition-colors {viewMode === 'calendario' ? 'bg-brand-surface-elevated border border-brand-divider text-brand-accent shadow-sm' : 'text-brand-text-muted hover:text-brand-text border border-transparent'}">
+				<button
+					onclick={() => (viewMode = "calendario")}
+					class="flex items-center gap-2 px-3 py-1 rounded-md text-xs font-bold transition-colors {viewMode ===
+					'calendario'
+						? 'bg-brand-surface-elevated border border-brand-divider text-brand-accent shadow-sm'
+						: 'text-brand-text-muted hover:text-brand-text border border-transparent'}"
+				>
 					<Calendar class="w-3.5 h-3.5" /> Calendario
 				</button>
 			</div>
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2 md:gap-3">
-			<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-brand-text-muted hover:text-brand-text border border-transparent hover:border-brand-divider text-xs font-semibold transition-colors" onclick={() => showTags = true}>
+			<button
+				class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-brand-text-muted hover:text-brand-text border border-transparent hover:border-brand-divider text-xs font-semibold transition-colors"
+				onclick={() => (showTags = true)}
+			>
 				<Tag class="w-3.5 h-3.5" /> Etiquetas
 			</button>
 
-			<button class="flex items-center gap-2 px-4 py-1.5 rounded-lg text-brand-bg bg-brand-accent hover:brightness-105 shadow-[0_0_10px_var(--color-brand-accent-muted)] text-xs font-bold transition-all w-full sm:w-auto justify-center" onclick={addList}>
+			<button
+				class="flex items-center gap-2 px-4 py-1.5 rounded-lg text-brand-bg bg-brand-accent hover:brightness-105 shadow-[0_0_10px_var(--color-brand-accent-muted)] text-xs font-bold transition-all w-full sm:w-auto justify-center"
+				onclick={addList}
+			>
 				<Plus class="w-4 h-4" /> Añadir Lista
 			</button>
 		</div>
 	</header>
 
-	
-	{#if viewMode === 'kanban'}
+	{#if viewMode === "kanban"}
 		<!-- Kanban Board -->
-		
-	<div class="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar p-2 md:p-6 bg-[#070b0e]">
-		{#if boardListsError}
-			<div class="p-8 text-center text-red-400 bg-red-400/10 rounded-xl mb-4 border border-red-400/20">
-				<AlertTriangle class="w-8 h-8 mx-auto mb-2" />
-				<p class="font-bold">Error cargando listas:</p>
-				<p>{boardListsError}</p>
-			</div>
-		{/if}
-		{#if boardLists.length === 0 && !boardListsError}
-			<div class="p-8 text-center text-brand-text-muted">
-				<p>No hay listas configuradas en este tablero.</p>
-				<button class="mt-4 px-4 py-2 bg-brand-accent text-brand-bg rounded-lg font-bold" onclick={addList}>Crear mi primera lista</button>
-			</div>
-		{/if}
-		<div 
-			class="flex items-start gap-6 h-full min-w-max pb-4"
-			use:dndzone={{items: boardLists, flipDurationMs: 200, type: 'columns', dropTargetStyle: {}}}
-			onconsider={handleDndConsiderColumns}
-			onfinalize={handleDndFinalizeColumns}
+
+		<div
+			class="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar p-2 md:p-6 bg-[#070b0e]"
 		>
-			{#each boardLists as col (col.id)}
-				<div class="flex flex-col w-80 h-full max-h-full rounded-2xl bg-[#0d1216] border border-brand-divider overflow-hidden shadow-lg">
-					<!-- Column Header -->
-					<div class="flex items-center justify-between p-4 border-b border-brand-divider/50 bg-[#0d1216] relative">
-						<div class="flex items-center gap-2 flex-1">
-							<span class="w-2 h-2 rounded-full bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)] shrink-0"></span>
-							{#if listToEdit === col.id}
-								<input 
-									type="text" 
-									bind:value={editListTitle} 
-									class="flex-1 min-w-0 bg-brand-surface border border-brand-accent rounded px-2 py-0.5 text-sm font-bold text-brand-text outline-none shadow-[0_0_5px_var(--color-brand-accent-muted)]"
-									onkeydown={(e) => { if (e.key === 'Enter') saveListEdit(); if (e.key === 'Escape') listToEdit = null; }}
-									onblur={saveListEdit}
-									autofocus
-								/>
-							{:else}
-								<h3 class="text-sm font-bold text-brand-text truncate">{col.name}</h3>
-								<span class="text-[10px] font-bold text-brand-text-muted bg-brand-surface border border-brand-divider px-2 py-0.5 rounded-full shrink-0">
-									{boardItems[col.id]?.length || 0}
-								</span>
-							{/if}
-						</div>
-						<div class="relative shrink-0 ml-2">
-							<button class="text-brand-text-muted hover:text-brand-text transition-colors p-1 rounded-md hover:bg-brand-surface-elevated {openListMenuId === col.id ? 'bg-brand-surface-elevated text-brand-text' : ''}" onclick={() => openListMenuId = openListMenuId === col.id ? null : col.id}>
-								<MoreVertical class="w-4 h-4" />
-							</button>
-							{#if openListMenuId === col.id}
-								<!-- svelte-ignore a11y_click_events_have_key_events -->
-								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div class="fixed inset-0 z-40" onclick={() => openListMenuId = null}></div>
-								<div class="absolute right-0 top-full mt-1 w-40 bg-brand-surface border border-brand-divider rounded-xl shadow-xl z-50 overflow-hidden py-1">
-									<button class="w-full text-left px-3 py-2 text-sm text-brand-text hover:bg-brand-surface-elevated transition-colors flex items-center gap-2" onclick={() => { listToEdit = col.id; editListTitle = col.name; openListMenuId = null; }}>
-										<Edit2 class="w-3.5 h-3.5 text-brand-text-muted" /> Editar
-									</button>
-									<button class="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-400/10 transition-colors flex items-center gap-2" onclick={() => { listToDelete = col.id; openListMenuId = null; }}>
-										<Trash2 class="w-3.5 h-3.5" /> Eliminar
-									</button>
-								</div>
-							{/if}
-						</div>
-					</div>
-
-					<!-- Column Body (Draggable Area) -->
-					<div 
-						class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 bg-brand-surface/30"
-						use:dndzone={{items: boardItems[col.id] || [], flipDurationMs: 200, dropTargetStyle: {}}}
-						onconsider={(e) => handleDndConsiderCards(e, col.id)}
-						onfinalize={(e) => handleDndFinalizeCards(e, col.id)}
-					>
-						{#each (boardItems[col.id] || []) as task (task.id)}
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-4 shadow-sm hover:border-brand-accent/50 transition-colors group cursor-grab active:cursor-grabbing relative overflow-hidden" onclick={() => openTaskUpdate(task)}>
-								
-								<!-- Mock Tag & Priority -->
-								<div class="flex items-center justify-between mb-3">
-									{#if task.tags}
-										<span class="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase" style="background: {task.tags.color}15; color: {task.tags.color}; border: 1px solid {task.tags.color}30">
-											{task.tags.name}
-										</span>
-									{:else}
-										<span class="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase bg-brand-surface-elevated text-brand-text-muted border border-brand-divider">
-											General
-										</span>
-									{/if}
-									
-									<div class="flex items-center gap-2">
-										{#if task.parent_task_id}
-											<span class="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/20">
-												<ListChecks class="w-3 h-3" /> Subtarea
-											</span>
-										{/if}
-										<!-- Deadline -->
-										{#if task.end_date}
-											{@const dStyles = getDeadlineStyles(task.end_date)}
-											<span class="flex items-center gap-1 text-[9px] font-bold border px-1.5 py-0.5 rounded-md {dStyles.badge}">
-												<Timer class="w-3 h-3" /> {formatLocalDate(task.end_date)}
-											</span>
-										{/if}
-
-										{#if task.novedad}
-											<div class="w-5 h-5 flex items-center justify-center rounded bg-amber-500 text-brand-bg shadow-[0_0_8px_var(--color-amber-500-muted)] tooltip tooltip-left" data-tip="Tarea bloqueada">
-												<AlertTriangle class="w-3.5 h-3.5" strokeWidth="3" />
-											</div>
-										{/if}
-									</div>
-								</div>
-
-								<!-- Title & Completion -->
-								<div class="flex items-start gap-2 mb-2">
-									<button 
-										class="mt-0.5 shrink-0 text-brand-text-muted hover:text-brand-accent transition-colors" 
-										onclick={(e) => { e.stopPropagation(); toggleTask(task.id); }}
-									>
-										{#if task.is_completed}
-											<CheckCircle2 class="w-4 h-4 text-brand-accent" />
-										{:else}
-											<Circle class="w-4 h-4" />
-										{/if}
-									</button>
-									<h4 class="text-[13px] font-bold text-brand-text leading-snug group-hover:text-brand-accent transition-colors {task.is_completed ? 'line-through opacity-50' : ''}">{task.title}</h4>
-								</div>
-								
-								<!-- Description -->
-								{#if task.description}
-									<p class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-3 mb-3 border-l-2 border-brand-divider pl-2">
-										{task.description.replace(/<[^>]*>?/gm, '')}
-									</p>
-								{/if}
-
-
-
-								<!-- Footer Icons & Avatars -->
-								<div class="flex items-center justify-between pt-1">
-									<div class="flex items-center gap-3 text-[10px] font-medium text-brand-text-muted">
-										<!-- Future: add comment count or attachments here -->
-									</div>
-									<div class="flex items-center -space-x-2">
-										<div class="w-6 h-6 rounded-full bg-brand-accent/20 border border-brand-accent/50 flex items-center justify-center text-[9px] font-bold text-brand-accent relative z-10" title="Propietario">
-											JN
-										</div>
-										{#if task.is_shared || task.is_shared_with_me}
-											{#each contacts.slice(0, 1) as contact, i}
-												<div class="w-6 h-6 rounded-full bg-brand-surface-elevated border border-brand-divider flex items-center justify-center text-[9px] font-bold text-brand-text-muted relative" style="z-index: {9 - i}" title={contact.display_name}>
-													{contact.nickname ? contact.nickname.substring(0, 2).toUpperCase() : contact.display_name.substring(0, 2).toUpperCase()}
-												</div>
-											{/each}
-										{/if}
-									</div>
-								</div>
-
-							</div>
-						{/each}
-						
-						<!-- Add Card Button inside column -->
-						<button class="w-full py-3 mt-2 flex items-center justify-center gap-2 text-[11px] font-bold text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated border border-transparent hover:border-brand-divider rounded-xl transition-all" onclick={openNewTask}>
-							<Plus class="w-4 h-4" /> Añadir tarjeta
-						</button>
-					</div>
+			{#if boardListsError}
+				<div
+					class="p-8 text-center text-red-400 bg-red-400/10 rounded-xl mb-4 border border-red-400/20"
+				>
+					<AlertTriangle class="w-8 h-8 mx-auto mb-2" />
+					<p class="font-bold">Error cargando listas:</p>
+					<p>{boardListsError}</p>
 				</div>
-			{/each}
-		</div>
-	</div>
-
-	
-	{:else if viewMode === 'lista'}
-		<!-- List View -->
-		<div class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-6 bg-[#070b0e]">
-			<div class="max-w-5xl mx-auto space-y-6">
+			{/if}
+			{#if boardLists.length === 0 && !boardListsError}
+				<div class="p-8 text-center text-brand-text-muted">
+					<p>No hay listas configuradas en este tablero.</p>
+					<button
+						class="mt-4 px-4 py-2 bg-brand-accent text-brand-bg rounded-lg font-bold"
+						onclick={addList}>Crear mi primera lista</button
+					>
+				</div>
+			{/if}
+			<div
+				class="flex items-start gap-6 h-full min-w-max pb-4"
+				use:dndzone={{
+					items: boardLists,
+					flipDurationMs: 200,
+					type: "columns",
+					dropTargetStyle: {},
+				}}
+				onconsider={handleDndConsiderColumns}
+				onfinalize={handleDndFinalizeColumns}
+			>
 				{#each boardLists as col (col.id)}
-					<div class="bg-[#0d1216] rounded-2xl border border-brand-divider overflow-hidden shadow-lg">
-						<div class="bg-brand-surface border-b border-brand-divider px-6 py-4 flex items-center justify-between">
-							<div class="flex items-center gap-3">
-								<span class="w-2.5 h-2.5 rounded-full {col.id === 'completed' ? 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]' : (col.id === 'progress' ? 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]' : (col.id === 'review' ? 'bg-amber-400 shadow-[0_0_8px_var(--color-amber-400)]' : 'bg-brand-text-muted'))}"></span>
-								<h3 class="text-base font-bold text-brand-text">{col.title}</h3>
-								<span class="text-xs font-bold text-brand-text-muted bg-[#0d1216] border border-brand-divider px-2.5 py-0.5 rounded-full">
-									{boardItems[col.id]?.length || 0}
-								</span>
+					<div
+						class="flex flex-col w-80 h-full max-h-full rounded-2xl bg-[#0d1216] border border-brand-divider overflow-hidden shadow-lg"
+					>
+						<!-- Column Header -->
+						<div
+							class="flex items-center justify-between p-4 border-b border-brand-divider/50 bg-[#0d1216] relative"
+						>
+							<div class="flex items-center gap-2 flex-1">
+								<span
+									class="w-2 h-2 rounded-full bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)] shrink-0"
+								></span>
+								{#if listToEdit === col.id}
+									<input
+										type="text"
+										bind:value={editListTitle}
+										class="flex-1 min-w-0 bg-brand-surface border border-brand-accent rounded px-2 py-0.5 text-sm font-bold text-brand-text outline-none shadow-[0_0_5px_var(--color-brand-accent-muted)]"
+										onkeydown={(e) => {
+											if (e.key === "Enter")
+												saveListEdit();
+											if (e.key === "Escape")
+												listToEdit = null;
+										}}
+										onblur={saveListEdit}
+									/>
+								{:else}
+									<h3
+										class="text-sm font-bold text-brand-text truncate"
+									>
+										{col.name}
+									</h3>
+									<span
+										class="text-[10px] font-bold text-brand-text-muted bg-brand-surface border border-brand-divider px-2 py-0.5 rounded-full shrink-0"
+									>
+										{boardItems[col.id]?.length || 0}
+									</span>
+								{/if}
+							</div>
+							<div class="relative shrink-0 ml-2">
+								<button
+									class="text-brand-text-muted hover:text-brand-text transition-colors p-1 rounded-md hover:bg-brand-surface-elevated {openListMenuId ===
+									col.id
+										? 'bg-brand-surface-elevated text-brand-text'
+										: ''}"
+									onclick={() =>
+										(openListMenuId =
+											openListMenuId === col.id
+												? null
+												: col.id)}
+								>
+									<MoreVertical class="w-4 h-4" />
+								</button>
+								{#if openListMenuId === col.id}
+									<!-- svelte-ignore a11y_click_events_have_key_events -->
+									<!-- svelte-ignore a11y_no_static_element_interactions -->
+									<div
+										class="fixed inset-0 z-40"
+										onclick={() => (openListMenuId = null)}
+									></div>
+									<div
+										class="absolute right-0 top-full mt-1 w-40 bg-brand-surface border border-brand-divider rounded-xl shadow-xl z-50 overflow-hidden py-1"
+									>
+										<button
+											class="w-full text-left px-3 py-2 text-sm text-brand-text hover:bg-brand-surface-elevated transition-colors flex items-center gap-2"
+											onclick={() => {
+												listToEdit = col.id;
+												editListTitle = col.name;
+												openListMenuId = null;
+											}}
+										>
+											<Edit2
+												class="w-3.5 h-3.5 text-brand-text-muted"
+											/> Editar
+										</button>
+										<button
+											class="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-400/10 transition-colors flex items-center gap-2"
+											onclick={() => {
+												listToDelete = col.id;
+												openListMenuId = null;
+											}}
+										>
+											<Trash2 class="w-3.5 h-3.5" /> Eliminar
+										</button>
+									</div>
+								{/if}
 							</div>
 						</div>
-						<div class="divide-y divide-brand-divider/50">
-							{#each (boardItems[col.id] || []) as task (task.id)}
+
+						<!-- Column Body (Draggable Area) -->
+						<div
+							class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 bg-brand-surface/30"
+							use:dndzone={{
+								items: boardItems[col.id] || [],
+								flipDurationMs: 200,
+								dropTargetStyle: {},
+							}}
+							onconsider={(e) =>
+								handleDndConsiderCards(e, col.id)}
+							onfinalize={(e) =>
+								handleDndFinalizeCards(e, col.id)}
+						>
+							{#each boardItems[col.id] || [] as task (task.id)}
 								<!-- svelte-ignore a11y_click_events_have_key_events -->
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
-								<div class="px-6 py-4 hover:bg-brand-surface-elevated transition-colors flex items-center justify-between group cursor-pointer" onclick={() => openTaskUpdate(task)}>
-									<div class="flex items-center gap-4">
-										<button class="w-5 h-5 rounded-md border-2 {task.is_completed ? 'border-brand-accent bg-brand-accent text-brand-bg' : 'border-brand-text-muted group-hover:border-brand-accent'} flex items-center justify-center transition-colors">
-											{#if task.is_completed}<CheckCircle2 class="w-3.5 h-3.5" />{/if}
-										</button>
-										<span class="text-sm font-semibold {task.is_completed ? 'text-brand-text-muted line-through' : 'text-brand-text'}">{task.title}</span>
+								<div
+									class="bg-[#070b0e] border border-brand-divider rounded-xl p-4 shadow-sm hover:border-brand-accent/50 transition-colors group cursor-grab active:cursor-grabbing relative overflow-hidden"
+									onclick={() => openTaskUpdate(task)}
+								>
+									<!-- Mock Tag & Priority -->
+									<div
+										class="flex items-center justify-between mb-3"
+									>
+										{#if task.tags}
+											<span
+												class="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase"
+												style="background: {task.tags
+													.color}15; color: {task.tags
+													.color}; border: 1px solid {task
+													.tags.color}30"
+											>
+												{task.tags.name}
+											</span>
+										{:else}
+											<span
+												class="px-2 py-0.5 rounded-md text-[9px] font-bold tracking-wide uppercase bg-brand-surface-elevated text-brand-text-muted border border-brand-divider"
+											>
+												General
+											</span>
+										{/if}
+
+										<div class="flex items-center gap-2">
+											{#if task.parent_task_id}
+												<span
+													class="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-brand-accent/10 text-brand-accent border border-brand-accent/20"
+												>
+													<ListChecks
+														class="w-3 h-3"
+													/> Subtarea
+												</span>
+											{/if}
+											<!-- Deadline -->
+											{#if task.end_date}
+												{@const dStyles =
+													getDeadlineStyles(
+														task.end_date,
+													)}
+												<span
+													class="flex items-center gap-1 text-[9px] font-bold border px-1.5 py-0.5 rounded-md {dStyles.badge}"
+												>
+													<Timer class="w-3 h-3" />
+													{formatLocalDate(
+														task.end_date,
+													)}
+												</span>
+											{/if}
+
+											{#if task.novedad}
+												<div
+													class="w-5 h-5 flex items-center justify-center rounded bg-amber-500 text-brand-bg shadow-[0_0_8px_var(--color-amber-500-muted)] tooltip tooltip-left"
+													data-tip="Tarea bloqueada"
+												>
+													<AlertTriangle
+														class="w-3.5 h-3.5"
+														strokeWidth="3"
+													/>
+												</div>
+											{/if}
+										</div>
 									</div>
-									<div class="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-										<!-- Botones de acciones, por ahora solo iconos -->
-										<button class="text-brand-text-muted hover:text-red-400"><Trash2 class="w-4 h-4" /></button>
-										<button class="text-brand-text-muted hover:text-brand-accent"><MoreVertical class="w-4 h-4" /></button>
+
+									<!-- Title & Completion -->
+									<div class="flex items-start gap-2 mb-2">
+										<button
+											class="mt-0.5 shrink-0 text-brand-text-muted hover:text-brand-accent transition-colors"
+											onclick={(e) => {
+												e.stopPropagation();
+												toggleTask(task.id);
+											}}
+										>
+											{#if task.is_completed}
+												<CheckCircle2
+													class="w-4 h-4 text-brand-accent"
+												/>
+											{:else}
+												<Circle class="w-4 h-4" />
+											{/if}
+										</button>
+										<h4
+											class="text-[13px] font-bold text-brand-text leading-snug group-hover:text-brand-accent transition-colors {task.is_completed
+												? 'line-through opacity-50'
+												: ''}"
+										>
+											{task.title}
+										</h4>
+									</div>
+
+									<!-- Description -->
+									{#if task.description}
+										<p
+											class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-3 mb-3 border-l-2 border-brand-divider pl-2"
+										>
+											{task.description.replace(
+												/<[^>]*>?/gm,
+												"",
+											)}
+										</p>
+									{/if}
+
+									<!-- Footer Icons & Avatars -->
+									<div
+										class="flex items-center justify-between pt-1"
+									>
+										<div
+											class="flex items-center gap-3 text-[10px] font-medium text-brand-text-muted"
+										>
+											<!-- Future: add comment count or attachments here -->
+										</div>
+										<div
+											class="flex items-center -space-x-2"
+										>
+											<div
+												class="w-6 h-6 rounded-full bg-brand-accent/20 border border-brand-accent/50 flex items-center justify-center text-[9px] font-bold text-brand-accent relative z-10"
+												title="Propietario"
+											>
+												JN
+											</div>
+											{#if task.is_shared || task.is_shared_with_me}
+												{#each contacts.slice(0, 1) as contact, i}
+													<div
+														class="w-6 h-6 rounded-full bg-brand-surface-elevated border border-brand-divider flex items-center justify-center text-[9px] font-bold text-brand-text-muted relative"
+														style="z-index: {9 - i}"
+														title={contact.display_name}
+													>
+														{contact.nickname
+															? contact.nickname
+																	.substring(
+																		0,
+																		2,
+																	)
+																	.toUpperCase()
+															: contact.display_name
+																	.substring(
+																		0,
+																		2,
+																	)
+																	.toUpperCase()}
+													</div>
+												{/each}
+											{/if}
+										</div>
 									</div>
 								</div>
 							{/each}
-							{#if !boardItems[col.id]?.length}
-								<div class="px-6 py-8 text-center text-sm font-medium text-brand-text-muted">
-									No hay tareas en esta sección
-								</div>
-							{/if}
-						</div>
-						<div class="px-6 py-3 bg-brand-surface/30 border-t border-brand-divider">
-							<button class="flex items-center gap-2 text-sm font-semibold text-brand-text-muted hover:text-brand-text transition-colors" onclick={openNewTask}>
+
+							<!-- Add Card Button inside column -->
+							<button
+								class="w-full py-3 mt-2 flex items-center justify-center gap-2 text-[11px] font-bold text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated border border-transparent hover:border-brand-divider rounded-xl transition-all"
+								onclick={openNewTask}
+							>
 								<Plus class="w-4 h-4" /> Añadir tarjeta
 							</button>
 						</div>
@@ -2112,64 +2583,229 @@
 				{/each}
 			</div>
 		</div>
-	{:else if viewMode === 'calendario'}
+	{:else if viewMode === "lista"}
+		<!-- List View -->
+		<div
+			class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-6 bg-[#070b0e]"
+		>
+			<div class="max-w-5xl mx-auto space-y-6">
+				{#each boardLists as col (col.id)}
+					<div
+						class="bg-[#0d1216] rounded-2xl border border-brand-divider overflow-hidden shadow-lg"
+					>
+						<div
+							class="bg-brand-surface border-b border-brand-divider px-6 py-4 flex items-center justify-between"
+						>
+							<div class="flex items-center gap-3">
+								<span
+									class="w-2.5 h-2.5 rounded-full {col.id ===
+									'completed'
+										? 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]'
+										: col.id === 'progress'
+											? 'bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]'
+											: col.id === 'review'
+												? 'bg-amber-400 shadow-[0_0_8px_var(--color-amber-400)]'
+												: 'bg-brand-text-muted'}"
+								></span>
+								<h3 class="text-base font-bold text-brand-text">
+									{col.title}
+								</h3>
+								<span
+									class="text-xs font-bold text-brand-text-muted bg-[#0d1216] border border-brand-divider px-2.5 py-0.5 rounded-full"
+								>
+									{boardItems[col.id]?.length || 0}
+								</span>
+							</div>
+						</div>
+						<div class="divide-y divide-brand-divider/50">
+							{#each boardItems[col.id] || [] as task (task.id)}
+								<!-- svelte-ignore a11y_click_events_have_key_events -->
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<div
+									class="px-6 py-4 hover:bg-brand-surface-elevated transition-colors flex items-center justify-between group cursor-pointer"
+									onclick={() => openTaskUpdate(task)}
+								>
+									<div class="flex items-center gap-4">
+										<button
+											class="w-5 h-5 rounded-md border-2 {task.is_completed
+												? 'border-brand-accent bg-brand-accent text-brand-bg'
+												: 'border-brand-text-muted group-hover:border-brand-accent'} flex items-center justify-center transition-colors"
+										>
+											{#if task.is_completed}<CheckCircle2
+													class="w-3.5 h-3.5"
+												/>{/if}
+										</button>
+										<span
+											class="text-sm font-semibold {task.is_completed
+												? 'text-brand-text-muted line-through'
+												: 'text-brand-text'}"
+											>{task.title}</span
+										>
+									</div>
+									<div
+										class="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity"
+									>
+										<!-- Botones de acciones, por ahora solo iconos -->
+										<button
+											class="text-brand-text-muted hover:text-red-400"
+											><Trash2 class="w-4 h-4" /></button
+										>
+										<button
+											class="text-brand-text-muted hover:text-brand-accent"
+											><MoreVertical
+												class="w-4 h-4"
+											/></button
+										>
+									</div>
+								</div>
+							{/each}
+							{#if !boardItems[col.id]?.length}
+								<div
+									class="px-6 py-8 text-center text-sm font-medium text-brand-text-muted"
+								>
+									No hay tareas en esta sección
+								</div>
+							{/if}
+						</div>
+						<div
+							class="px-6 py-3 bg-brand-surface/30 border-t border-brand-divider"
+						>
+							<button
+								class="flex items-center gap-2 text-sm font-semibold text-brand-text-muted hover:text-brand-text transition-colors"
+								onclick={openNewTask}
+							>
+								<Plus class="w-4 h-4" /> Añadir tarjeta
+							</button>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{:else if viewMode === "calendario"}
 		<!-- Calendar View -->
-		<div class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-6 bg-[#070b0e]">
+		<div
+			class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-6 bg-[#070b0e]"
+		>
 			<div class="max-w-6xl mx-auto h-full flex flex-col">
 				<!-- Cabecera Mes -->
-				<div class="flex items-center justify-between mb-4 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm">
-					<h2 class="text-lg font-bold text-brand-text px-3 capitalize">
-						{calendarCurrentMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+				<div
+					class="flex items-center justify-between mb-4 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm"
+				>
+					<h2
+						class="text-lg font-bold text-brand-text px-3 capitalize"
+					>
+						{calendarCurrentMonth.toLocaleDateString("es-ES", {
+							month: "long",
+							year: "numeric",
+						})}
 					</h2>
 					<div class="flex items-center gap-2">
-						<button class="p-2 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted transition-colors" onclick={prevCalMonth}>
-							<ChevronLeft class="w-5 h-5"/>
+						<button
+							class="p-2 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted transition-colors"
+							onclick={prevCalMonth}
+						>
+							<ChevronLeft class="w-5 h-5" />
 						</button>
-						<button class="px-4 py-1.5 bg-brand-surface-elevated text-xs font-bold text-brand-accent rounded-lg border border-brand-divider" onclick={() => calendarCurrentMonth = new Date()}>
+						<button
+							class="px-4 py-1.5 bg-brand-surface-elevated text-xs font-bold text-brand-accent rounded-lg border border-brand-divider"
+							onclick={() => (calendarCurrentMonth = new Date())}
+						>
 							Hoy
 						</button>
-						<button class="p-2 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted transition-colors" onclick={nextCalMonth}>
-							<ChevronRight class="w-5 h-5"/>
+						<button
+							class="p-2 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted transition-colors"
+							onclick={nextCalMonth}
+						>
+							<ChevronRight class="w-5 h-5" />
 						</button>
 					</div>
 				</div>
 
 				<!-- Grid Calendario -->
-				<div class="flex-1 bg-[#0d1216] border border-brand-divider rounded-2xl overflow-hidden flex flex-col shadow-lg">
+				<div
+					class="flex-1 bg-[#0d1216] border border-brand-divider rounded-2xl overflow-hidden flex flex-col shadow-lg"
+				>
 					<!-- Cabecera Días -->
-					<div class="grid grid-cols-7 border-b border-brand-divider bg-brand-surface">
-						{#each ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as day}
-							<div class="py-3 text-center text-xs font-bold text-brand-text-muted uppercase tracking-wider">{day}</div>
+					<div
+						class="grid grid-cols-7 border-b border-brand-divider bg-brand-surface"
+					>
+						{#each ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] as day}
+							<div
+								class="py-3 text-center text-xs font-bold text-brand-text-muted uppercase tracking-wider"
+							>
+								{day}
+							</div>
 						{/each}
 					</div>
-					
+
 					<!-- Celdas -->
 					<div class="grid grid-cols-7 flex-1 auto-rows-fr">
 						{#each boardCalendarDays as day, i}
-							<div class="min-h-[120px] p-2 border-r border-b border-brand-divider/50 {i % 7 === 6 ? 'border-r-0' : ''} {i >= 35 ? 'border-b-0' : ''} {!day.currentMonth ? 'bg-[#070b0e] opacity-50' : 'bg-[#0d1216]' } relative group transition-colors hover:bg-brand-surface-elevated/30">
-								<div class="flex justify-between items-start mb-2">
-									<span class="w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold {day.isToday ? 'bg-brand-accent text-brand-bg shadow-[0_0_8px_var(--color-brand-accent-muted)]' : 'text-brand-text'}">
+							<div
+								class="min-h-30 p-2 border-r border-b border-brand-divider/50 {i %
+									7 ===
+								6
+									? 'border-r-0'
+									: ''} {i >= 35
+									? 'border-b-0'
+									: ''} {!day.currentMonth
+									? 'bg-[#070b0e] opacity-50'
+									: 'bg-[#0d1216]'} relative group transition-colors hover:bg-brand-surface-elevated/30"
+							>
+								<div
+									class="flex justify-between items-start mb-2"
+								>
+									<span
+										class="w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold {day.isToday
+											? 'bg-brand-accent text-brand-bg shadow-[0_0_8px_var(--color-brand-accent-muted)]'
+											: 'text-brand-text'}"
+									>
 										{day.date.getDate()}
 									</span>
 									<!-- Botón añadir rápido -->
-									<button class="w-6 h-6 rounded-md hover:bg-brand-surface-elevated text-brand-text-muted opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all" onclick={() => {
-										// Configurar el modal para este día
-										newTaskStartDate = new Date(day.date.getTime() - (day.date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-										showNewTask = true;
-									}}>
-										<Plus class="w-4 h-4"/>
+									<button
+										class="w-6 h-6 rounded-md hover:bg-brand-surface-elevated text-brand-text-muted opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"
+										onclick={() => {
+											// Configurar el modal para este día
+											newTaskStartDate = new Date(
+												day.date.getTime() -
+													day.date.getTimezoneOffset() *
+														60000,
+											)
+												.toISOString()
+												.split("T")[0];
+											showNewTask = true;
+										}}
+									>
+										<Plus class="w-4 h-4" />
 									</button>
 								</div>
-								
+
 								<!-- Tareas del día -->
-								<div class="space-y-1.5 h-[80px] overflow-y-auto custom-scrollbar pr-1">
+								<div
+									class="space-y-1.5 h-20 overflow-y-auto custom-scrollbar pr-1"
+								>
 									{#each getTasksForCalendarDate(day.date) as task}
-										{@const dStyles = getDeadlineStyles(task.end_date || task.date)}
+										{@const dStyles = getDeadlineStyles(
+											task.end_date || task.date,
+										)}
 										<!-- svelte-ignore a11y_click_events_have_key_events -->
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
-										<div class="px-2 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1.5 truncate border cursor-pointer hover:brightness-110 transition-all {task.is_completed ? 'bg-brand-surface/50 border-brand-divider text-brand-text-muted line-through' : `bg-brand-surface-elevated ${dStyles.border} text-brand-text shadow-sm`}" title={task.title} onclick={() => openTaskUpdate(task)}>
-											<div class="w-1.5 h-1.5 rounded-full shrink-0 {task.is_completed ? 'bg-brand-text-muted' : dStyles.bg}"></div>
-											<span class="truncate">{task.title}</span>
+										<div
+											class="px-2 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1.5 truncate border cursor-pointer hover:brightness-110 transition-all {task.is_completed
+												? 'bg-brand-surface/50 border-brand-divider text-brand-text-muted line-through'
+												: `bg-brand-surface-elevated ${dStyles.border} text-brand-text shadow-sm`}"
+											title={task.title}
+											onclick={() => openTaskUpdate(task)}
+										>
+											<div
+												class="w-1.5 h-1.5 rounded-full shrink-0 {task.is_completed
+													? 'bg-brand-text-muted'
+													: dStyles.bg}"
+											></div>
+											<span class="truncate"
+												>{task.title}</span
+											>
 										</div>
 									{/each}
 								</div>
@@ -2180,11 +2816,23 @@
 			</div>
 		</div>
 	{/if}
-	
-	<footer class="shrink-0 h-14 md:h-10 border-t border-brand-divider bg-[#070b0e] px-4 md:px-6 flex flex-col md:flex-row md:items-center justify-center md:justify-between text-[11px] font-medium relative z-10 gap-2 md:gap-0">
-		<div class="flex items-center justify-center md:justify-start gap-4 md:gap-6">
-			<span class="flex items-center gap-2 text-brand-text font-bold"><Kanban class="w-3.5 h-3.5 text-brand-text-muted" /> {tasks.length} tareas en este tablero</span>
-			<span class="flex items-center gap-2 text-brand-accent font-bold"><span class="w-1.5 h-1.5 rounded-full bg-brand-accent shadow-[0_0_5px_var(--color-brand-accent)]"></span> {tasks.filter(t => t.is_completed).length} completadas</span>
+
+	<footer
+		class="shrink-0 h-14 md:h-10 border-t border-brand-divider bg-[#070b0e] px-4 md:px-6 flex flex-col md:flex-row md:items-center justify-center md:justify-between text-[11px] font-medium relative z-10 gap-2 md:gap-0"
+	>
+		<div
+			class="flex items-center justify-center md:justify-start gap-4 md:gap-6"
+		>
+			<span class="flex items-center gap-2 text-brand-text font-bold"
+				><Kanban class="w-3.5 h-3.5 text-brand-text-muted" />
+				{tasks.length} tareas en este tablero</span
+			>
+			<span class="flex items-center gap-2 text-brand-accent font-bold"
+				><span
+					class="w-1.5 h-1.5 rounded-full bg-brand-accent shadow-[0_0_5px_var(--color-brand-accent)]"
+				></span>
+				{tasks.filter((t) => t.is_completed).length} completadas</span
+			>
 		</div>
 	</footer>
 </div>
@@ -2195,22 +2843,38 @@
 {#if showTaskUpdate}
 	{@const selectedTask = tasks.find((t) => t.id === selectedTaskId) || {}}
 	<!-- Overlay -->
-	<div class="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm p-4 sm:p-6 overflow-y-auto">
+	<div
+		class="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm p-4 sm:p-6 overflow-y-auto"
+	>
 		<!-- Modal Container -->
-		<div class="bg-[#070b0e] border border-brand-divider rounded-2xl w-full max-w-6xl shadow-2xl flex flex-col max-h-[95vh]">
-			
+		<div
+			class="bg-[#070b0e] border border-brand-divider rounded-2xl w-full max-w-6xl shadow-2xl flex flex-col max-h-[95vh]"
+		>
 			<!-- Header -->
-			<div class="flex flex-wrap items-center justify-between p-4 border-b border-brand-divider bg-[#0d1216] rounded-t-2xl gap-4">
+			<div
+				class="flex flex-wrap items-center justify-between p-4 border-b border-brand-divider bg-[#0d1216] rounded-t-2xl gap-4"
+			>
 				<!-- Breadcrumbs -->
-				<div class="flex items-center gap-2 text-xs font-semibold text-brand-text-muted">
+				<div
+					class="flex items-center gap-2 text-xs font-semibold text-brand-text-muted"
+				>
 					<Kanban class="w-4 h-4" />
-					<span>Tablero: {currentBoard ? currentBoard.title : 'Enfoque Semanal & Proyectos'}</span>
+					<span
+						>Tablero: {currentBoard
+							? currentBoard.title
+							: "Enfoque Semanal & Proyectos"}</span
+					>
 					<span class="px-2">/</span>
-					<span class="px-2 py-0.5 rounded-full bg-brand-surface border border-brand-divider text-brand-text flex items-center gap-1">
-						{boardLists.find(l => l.id === selectedTask.list_id)?.name || boardLists[0]?.name || 'Lista'}
+					<span
+						class="px-2 py-0.5 rounded-full bg-brand-surface border border-brand-divider text-brand-text flex items-center gap-1"
+					>
+						{boardLists.find((l) => l.id === selectedTask.list_id)
+							?.name ||
+							boardLists[0]?.name ||
+							"Lista"}
 					</span>
 				</div>
-				
+
 				<!-- Right actions -->
 				<div class="flex items-center gap-3">
 					<div class="w-px h-5 bg-brand-divider mx-1"></div>
@@ -2230,9 +2894,14 @@
 			<!-- Title Area & Actions -->
 			<div class="p-6 border-b border-brand-divider bg-[#0b1014]">
 				<div class="flex gap-4 items-start mb-5">
-					<button class="mt-1 shrink-0 text-brand-text-muted hover:text-brand-accent transition-colors" onclick={() => toggleTask(selectedTask.id)}>
+					<button
+						class="mt-1 shrink-0 text-brand-text-muted hover:text-brand-accent transition-colors"
+						onclick={() => toggleTask(selectedTask.id)}
+					>
 						{#if selectedTask.is_completed}
-							<CheckCircle2 class="w-7 h-7 text-brand-accent fill-brand-accent/20" />
+							<CheckCircle2
+								class="w-7 h-7 text-brand-accent fill-brand-accent/20"
+							/>
 						{:else}
 							<Circle class="w-7 h-7" />
 						{/if}
@@ -2244,41 +2913,61 @@
 						placeholder="Escribe el título de la tarea..."
 					/>
 				</div>
-				
+
 				<!-- Action Pills -->
 				<div class="flex flex-wrap items-center gap-3">
-					<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-divider bg-brand-surface text-brand-text-muted hover:text-brand-text text-xs font-bold transition-colors" onclick={() => showTags = true}>
-						<Tag class="w-3.5 h-3.5 text-brand-accent" /> Etiquetas <span class="w-1.5 h-1.5 rounded-full bg-brand-accent ml-1"></span>
+					<button
+						class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-divider bg-brand-surface text-brand-text-muted hover:text-brand-text text-xs font-bold transition-colors"
+						onclick={() => (showTags = true)}
+					>
+						<Tag class="w-3.5 h-3.5 text-brand-accent" /> Etiquetas
+						<span
+							class="w-1.5 h-1.5 rounded-full bg-brand-accent ml-1"
+						></span>
 					</button>
-					
+
 					{#if !editingNovedad}
-						<button 
+						<button
 							class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-xs font-bold transition-colors"
-							onclick={() => editingNovedad = ' '}
+							onclick={() => (editingNovedad = " ")}
 						>
 							<AlertTriangle class="w-3.5 h-3.5" /> Novedad / Bloqueo
 						</button>
 					{:else}
-						<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-xs font-bold transition-colors ml-auto">
-							<span class="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_var(--color-amber-500)]"></span> <AlertTriangle class="w-3.5 h-3.5" /> Novedad Activa (Bloqueo)
+						<button
+							class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 text-xs font-bold transition-colors ml-auto"
+						>
+							<span
+								class="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_var(--color-amber-500)]"
+							></span>
+							<AlertTriangle class="w-3.5 h-3.5" /> Novedad Activa
+							(Bloqueo)
 						</button>
 					{/if}
-					
+
 					{#if selectedTask.is_shared || selectedTask.is_shared_with_me}
-						<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-accent/30 bg-brand-accent/10 text-brand-accent text-xs font-bold">
+						<div
+							class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-accent/30 bg-brand-accent/10 text-brand-accent text-xs font-bold"
+						>
 							<Share2 class="w-3.5 h-3.5" />
-							{selectedTask.is_shared_with_me ? 'Compartida contigo' : 'Compartida'}
+							{selectedTask.is_shared_with_me
+								? "Compartida contigo"
+								: "Compartida"}
 						</div>
 					{/if}
-					
+
 					{#if selectedTask.parent_task_id}
-						{@const parentTask = tasks.find(t => t.id === selectedTask.parent_task_id)}
+						{@const parentTask = tasks.find(
+							(t) => t.id === selectedTask.parent_task_id,
+						)}
 						{#if parentTask}
-							<button 
+							<button
 								class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-accent/30 bg-brand-surface-elevated text-brand-text hover:text-brand-accent hover:border-brand-accent/50 text-xs font-bold transition-colors"
 								onclick={() => openTaskUpdate(parentTask)}
 							>
-								<ArrowLeft class="w-3.5 h-3.5 text-brand-text-muted" /> De: {parentTask.title}
+								<ArrowLeft
+									class="w-3.5 h-3.5 text-brand-text-muted"
+								/> De: {parentTask.title}
 							</button>
 						{/if}
 					{/if}
@@ -2286,34 +2975,51 @@
 			</div>
 
 			<!-- Body Layout -->
-			<div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
-				
+			<div
+				class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-8"
+			>
 				<!-- Left Column (Main Content) -->
 				<div class="lg:col-span-2 space-y-8">
-					
 					{#if editingNovedad}
 						<!-- Mockup Alert Block (Novedad) -->
-						<div class="rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-transparent p-5 flex items-start gap-4">
-							<div class="w-10 h-10 rounded-full border border-amber-500/50 bg-amber-500/10 flex items-center justify-center shrink-0">
+						<div
+							class="rounded-xl border border-amber-500/30 bg-linear-to-r from-amber-500/10 to-transparent p-5 flex items-start gap-4"
+						>
+							<div
+								class="w-10 h-10 rounded-full border border-amber-500/50 bg-amber-500/10 flex items-center justify-center shrink-0"
+							>
 								<AlertTriangle class="w-5 h-5 text-amber-500" />
 							</div>
 							<div class="flex-1">
-								<div class="flex items-start justify-between gap-4 mb-2">
+								<div
+									class="flex items-start justify-between gap-4 mb-2"
+								>
 									<div>
-										<h4 class="text-sm font-bold text-amber-500 uppercase tracking-wide">TAREA BLOQUEADA / NOVEDAD EN ESPERA</h4>
-										<p class="text-[10px] text-amber-500/70 mt-1">• Define el motivo del bloqueo abajo</p>
+										<h4
+											class="text-sm font-bold text-amber-500 uppercase tracking-wide"
+										>
+											TAREA BLOQUEADA / NOVEDAD EN ESPERA
+										</h4>
+										<p
+											class="text-[10px] text-amber-500/70 mt-1"
+										>
+											• Define el motivo del bloqueo abajo
+										</p>
 									</div>
-									<button 
+									<button
 										class="px-4 py-2 rounded-lg bg-amber-500 text-brand-bg font-bold text-xs hover:brightness-110 transition-all shadow-[0_0_15px_var(--color-amber-500-muted)]"
-										onclick={() => { editingNovedad = ''; saveNovedad(); }}
+										onclick={() => {
+											editingNovedad = "";
+											saveNovedad();
+										}}
 									>
 										Resolver / Desmarcar
 									</button>
 								</div>
-								<textarea 
+								<textarea
 									bind:value={editingNovedad}
 									placeholder="Escribe la novedad o motivo de bloqueo..."
-									class="w-full bg-[#070b0e] border border-amber-500/30 rounded-lg text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-amber-500 transition-colors resize-none p-3 mt-2 custom-scrollbar min-h-[80px]"
+									class="w-full bg-[#070b0e] border border-amber-500/30 rounded-lg text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-amber-500 transition-colors resize-none p-3 mt-2 custom-scrollbar min-h-20"
 								></textarea>
 							</div>
 						</div>
@@ -2322,7 +3028,11 @@
 					<!-- Descripción Rich Text Editor -->
 					<div>
 						<div class="flex items-center justify-between mb-4">
-							<h4 class="text-base font-bold text-brand-text flex items-center gap-2"><AlignLeft class="w-5 h-5 text-brand-accent"/> Descripción</h4>
+							<h4
+								class="text-base font-bold text-brand-text flex items-center gap-2"
+							>
+								<AlignLeft class="w-5 h-5 text-brand-accent" /> Descripción
+							</h4>
 						</div>
 						<RichTextEditor bind:value={editingDescription} />
 					</div>
@@ -2330,69 +3040,238 @@
 					<!-- Checklist & Subtareas -->
 					<div>
 						<div class="flex items-center justify-between mb-3">
-							<h4 class="text-base font-bold text-brand-text flex items-center gap-2"><CheckCircle2 class="w-5 h-5 text-brand-accent"/> Checklist</h4>
+							<h4
+								class="text-base font-bold text-brand-text flex items-center gap-2"
+							>
+								<CheckCircle2
+									class="w-5 h-5 text-brand-accent"
+								/> Checklist
+							</h4>
 							{#if taskLists.length > 0}
-								{@const totalItems = taskLists.reduce((a, l) => a + (l.item_count ?? 0), 0)}
-								{@const doneItems = taskLists.reduce((a, l) => a + (l.done_count ?? 0), 0)}
-								<span class="text-xs font-bold text-brand-accent">{doneItems} de {totalItems} completadas ({totalItems > 0 ? Math.round(doneItems / totalItems * 100) : 0}%)</span>
+								{@const totalItems = taskLists.reduce(
+									(a, l) => a + (l.item_count ?? 0),
+									0,
+								)}
+								{@const doneItems = taskLists.reduce(
+									(a, l) => a + (l.done_count ?? 0),
+									0,
+								)}
+								<span
+									class="text-xs font-bold text-brand-accent"
+									>{doneItems} de {totalItems} completadas ({totalItems >
+									0
+										? Math.round(
+												(doneItems / totalItems) * 100,
+											)
+										: 0}%)</span
+								>
 							{/if}
 						</div>
 
 						{#if listsLoading}
-							<div class="text-xs text-brand-text-muted py-4 text-center">Cargando...</div>
+							<div
+								class="text-xs text-brand-text-muted py-4 text-center"
+							>
+								Cargando...
+							</div>
 						{:else}
 							<!-- Mostrar checklists existentes -->
 							{#each taskLists as list}
-								{@const pct = list.item_count ? Math.round((list.done_count ?? 0) / list.item_count * 100) : 0}
+								{@const pct = list.item_count
+									? Math.round(
+											((list.done_count ?? 0) /
+												list.item_count) *
+												100,
+										)
+									: 0}
 								<div class="mb-4">
-									<div class="flex items-center justify-between mb-2 group/checklist">
+									<div
+										class="flex items-center justify-between mb-2 group/checklist"
+									>
 										{#if editChecklistId === list.id}
-											<div class="flex-1 flex items-center gap-2 mr-2">
-												<input type="text" bind:value={editChecklistName} class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-2 py-1 text-sm font-bold text-brand-text focus:outline-none focus:border-brand-accent" onkeydown={(e) => { if (e.key === 'Enter') saveEditChecklist(); if (e.key === 'Escape') cancelEditChecklist(); }} autofocus />
-												<button type="button" class="p-1 text-brand-text-muted hover:text-brand-accent transition-colors" onclick={saveEditChecklist} title="Guardar"><Check class="w-4 h-4" /></button>
-												<button type="button" class="p-1 text-brand-text-muted hover:text-red-400 transition-colors" onclick={cancelEditChecklist} title="Cancelar"><X class="w-4 h-4" /></button>
+											<div
+												class="flex-1 flex items-center gap-2 mr-2"
+											>
+												<input
+													type="text"
+													bind:value={
+														editChecklistName
+													}
+													class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-2 py-1 text-sm font-bold text-brand-text focus:outline-none focus:border-brand-accent"
+													onkeydown={(e) => {
+														if (e.key === "Enter")
+															saveEditChecklist();
+														if (e.key === "Escape")
+															cancelEditChecklist();
+													}}
+												/>
+												<button
+													type="button"
+													class="p-1 text-brand-text-muted hover:text-brand-accent transition-colors"
+													onclick={saveEditChecklist}
+													title="Guardar"
+													><Check
+														class="w-4 h-4"
+													/></button
+												>
+												<button
+													type="button"
+													class="p-1 text-brand-text-muted hover:text-red-400 transition-colors"
+													onclick={cancelEditChecklist}
+													title="Cancelar"
+													><X
+														class="w-4 h-4"
+													/></button
+												>
 											</div>
 										{:else}
-											<div class="flex items-center gap-2">
-												<button type="button" class="text-sm font-bold text-brand-text hover:text-brand-accent transition-colors" onclick={() => loadListItems(list)}>
+											<div
+												class="flex items-center gap-2"
+											>
+												<button
+													type="button"
+													class="text-sm font-bold text-brand-text hover:text-brand-accent transition-colors"
+													onclick={() =>
+														loadListItems(list)}
+												>
 													{list.name}
 												</button>
-												<button type="button" class="opacity-0 group-hover/checklist:opacity-100 transition-opacity p-1 text-brand-text-muted hover:text-brand-text" onclick={() => startEditChecklist(list)} title="Editar nombre">
-													<Edit2 class="w-3.5 h-3.5" />
+												<button
+													type="button"
+													class="opacity-0 group-hover/checklist:opacity-100 transition-opacity p-1 text-brand-text-muted hover:text-brand-text"
+													onclick={() =>
+														startEditChecklist(
+															list,
+														)}
+													title="Editar nombre"
+												>
+													<Edit2
+														class="w-3.5 h-3.5"
+													/>
 												</button>
 											</div>
-											<span class="text-[10px] text-brand-text-muted">{list.done_count ?? 0}/{list.item_count ?? 0}</span>
+											<span
+												class="text-[10px] text-brand-text-muted"
+												>{list.done_count ??
+													0}/{list.item_count ??
+													0}</span
+											>
 										{/if}
 									</div>
-									<div class="h-1.5 w-full bg-brand-surface rounded-full overflow-hidden mb-3">
-										<div class="h-full bg-brand-accent rounded-full shadow-[0_0_8px_var(--color-brand-accent)] transition-all" style="width:{pct}%"></div>
+									<div
+										class="h-1.5 w-full bg-brand-surface rounded-full overflow-hidden mb-3"
+									>
+										<div
+											class="h-full bg-brand-accent rounded-full shadow-[0_0_8px_var(--color-brand-accent)] transition-all"
+											style="width:{pct}%"
+										></div>
 									</div>
 									{#if selectedList?.id === list.id}
 										{#if listDetailLoading}
-											<div class="text-xs text-brand-text-muted py-2 text-center">Cargando ítems...</div>
+											<div
+												class="text-xs text-brand-text-muted py-2 text-center"
+											>
+												Cargando ítems...
+											</div>
 										{:else}
 											<div class="space-y-1 mb-3">
 												{#each selectedListItems as item}
-													<div class="group flex items-center gap-3 p-2.5 rounded-lg hover:bg-brand-surface transition-colors">
+													<div
+														class="group flex items-center gap-3 p-2.5 rounded-lg hover:bg-brand-surface transition-colors"
+													>
 														{#if editListItemId === item.id}
-															<input type="text" bind:value={editListItemTitle} class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-2 py-1 text-sm text-brand-text focus:outline-none focus:border-brand-accent" onkeydown={(e) => { if (e.key === 'Enter') saveEditListItem(); if (e.key === 'Escape') cancelEditListItem(); }} autofocus />
-															<button type="button" class="p-1 text-brand-text-muted hover:text-brand-accent transition-colors" onclick={saveEditListItem} title="Guardar"><Check class="w-4 h-4" /></button>
-															<button type="button" class="p-1 text-brand-text-muted hover:text-red-400 transition-colors" onclick={cancelEditListItem} title="Cancelar"><X class="w-4 h-4" /></button>
+															<input
+																type="text"
+																bind:value={
+																	editListItemTitle
+																}
+																class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-2 py-1 text-sm text-brand-text focus:outline-none focus:border-brand-accent"
+																onkeydown={(
+																	e,
+																) => {
+																	if (
+																		e.key ===
+																		"Enter"
+																	)
+																		saveEditListItem();
+																	if (
+																		e.key ===
+																		"Escape"
+																	)
+																		cancelEditListItem();
+																}}
+															/>
+															<button
+																type="button"
+																class="p-1 text-brand-text-muted hover:text-brand-accent transition-colors"
+																onclick={saveEditListItem}
+																title="Guardar"
+																><Check
+																	class="w-4 h-4"
+																/></button
+															>
+															<button
+																type="button"
+																class="p-1 text-brand-text-muted hover:text-red-400 transition-colors"
+																onclick={cancelEditListItem}
+																title="Cancelar"
+																><X
+																	class="w-4 h-4"
+																/></button
+															>
 														{:else}
-															<button type="button" class="shrink-0" onclick={() => toggleListItem(item)}>
+															<button
+																type="button"
+																class="shrink-0"
+																onclick={() =>
+																	toggleListItem(
+																		item,
+																	)}
+															>
 																{#if item.is_completed}
-																	<CheckSquare class="w-5 h-5 text-brand-accent" />
+																	<CheckSquare
+																		class="w-5 h-5 text-brand-accent"
+																	/>
 																{:else}
-																	<div class="w-5 h-5 rounded-md border-2 border-brand-text-muted group-hover:border-brand-accent transition-colors"></div>
+																	<div
+																		class="w-5 h-5 rounded-md border-2 border-brand-text-muted group-hover:border-brand-accent transition-colors"
+																	></div>
 																{/if}
 															</button>
-															<span class="flex-1 text-sm font-semibold {item.is_completed ? 'line-through text-brand-text-muted' : 'text-brand-text'}">{item.title}</span>
-															<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-																<button type="button" class="p-1 text-brand-text-muted hover:text-brand-text" onclick={() => startEditListItem(item)} title="Editar ítem">
-																	<Edit2 class="w-3.5 h-3.5" />
+															<span
+																class="flex-1 text-sm font-semibold {item.is_completed
+																	? 'line-through text-brand-text-muted'
+																	: 'text-brand-text'}"
+																>{item.title}</span
+															>
+															<div
+																class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+															>
+																<button
+																	type="button"
+																	class="p-1 text-brand-text-muted hover:text-brand-text"
+																	onclick={() =>
+																		startEditListItem(
+																			item,
+																		)}
+																	title="Editar ítem"
+																>
+																	<Edit2
+																		class="w-3.5 h-3.5"
+																	/>
 																</button>
-																<button type="button" class="p-1 text-brand-text-muted hover:text-red-400" onclick={() => deleteListItem(item.id)} title="Eliminar ítem">
-																	<X class="w-3.5 h-3.5" />
+																<button
+																	type="button"
+																	class="p-1 text-brand-text-muted hover:text-red-400"
+																	onclick={() =>
+																		deleteListItem(
+																			item.id,
+																		)}
+																	title="Eliminar ítem"
+																>
+																	<X
+																		class="w-3.5 h-3.5"
+																	/>
 																</button>
 															</div>
 														{/if}
@@ -2402,12 +3281,20 @@
 											<div class="flex gap-2">
 												<input
 													type="text"
-													bind:value={newListItemTitle}
+													bind:value={
+														newListItemTitle
+													}
 													placeholder="Nuevo ítem..."
 													class="flex-1 bg-brand-surface border border-brand-divider rounded-lg px-3 py-2 text-xs text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors"
-													onkeydown={(e) => e.key === 'Enter' && addItemToSelectedList()}
+													onkeydown={(e) =>
+														e.key === "Enter" &&
+														addItemToSelectedList()}
 												/>
-												<button type="button" class="px-3 py-2 bg-brand-accent text-brand-bg text-xs font-bold rounded-lg hover:brightness-105 transition-all" onclick={addItemToSelectedList}>
+												<button
+													type="button"
+													class="px-3 py-2 bg-brand-accent text-brand-bg text-xs font-bold rounded-lg hover:brightness-105 transition-all"
+													onclick={addItemToSelectedList}
+												>
 													<Plus class="w-3.5 h-3.5" />
 												</button>
 											</div>
@@ -2418,8 +3305,14 @@
 
 							<!-- Formulario Inline / Empty State -->
 							{#if showNewChecklistForm}
-								<div class="mt-3 rounded-xl border border-brand-accent/30 bg-brand-surface p-4">
-									<p class="text-xs font-bold text-brand-text-muted uppercase tracking-wider mb-2">Nueva Checklist</p>
+								<div
+									class="mt-3 rounded-xl border border-brand-accent/30 bg-brand-surface p-4"
+								>
+									<p
+										class="text-xs font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+									>
+										Nueva Checklist
+									</p>
 									<div class="flex gap-2">
 										<input
 											type="text"
@@ -2427,35 +3320,96 @@
 											placeholder="Nombre de la checklist..."
 											class="flex-1 bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 text-sm text-brand-text placeholder-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors"
 											onkeydown={async (e) => {
-												if (e.key === 'Enter') {
-													if (!newChecklistName.trim() || selectedTaskId === null || !supabase) return;
-													const { error } = await supabase.from('task_lists').insert({ task_id: selectedTaskId, name: newChecklistName.trim() });
-													if (!error) { showNewChecklistForm = false; newChecklistName = ''; await loadTaskLists(selectedTaskId); }
+												if (e.key === "Enter") {
+													if (
+														!newChecklistName.trim() ||
+														selectedTaskId ===
+															null ||
+														!supabase
+													)
+														return;
+													const { error } =
+														await supabase
+															.from("task_lists")
+															.insert({
+																task_id:
+																	selectedTaskId,
+																name: newChecklistName.trim(),
+															});
+													if (!error) {
+														showNewChecklistForm = false;
+														newChecklistName = "";
+														await loadTaskLists(
+															selectedTaskId,
+														);
+													}
 												}
 											}}
-											autofocus
 										/>
 										<button
 											type="button"
 											class="px-3 py-2 bg-brand-accent text-brand-bg text-xs font-bold rounded-lg hover:brightness-105 transition-all"
 											onclick={async () => {
-												if (!newChecklistName.trim() || selectedTaskId === null || !supabase) return;
-												const { error } = await supabase.from('task_lists').insert({ task_id: selectedTaskId, name: newChecklistName.trim() });
-												if (!error) { showNewChecklistForm = false; newChecklistName = ''; await loadTaskLists(selectedTaskId); }
-											}}
-										>Crear</button>
-										<button type="button" class="px-3 py-2 text-brand-text-muted hover:text-brand-text text-xs rounded-lg border border-brand-divider transition-colors" onclick={() => { showNewChecklistForm = false; newChecklistName = ''; }}>Cancelar</button>
+												if (
+													!newChecklistName.trim() ||
+													selectedTaskId === null ||
+													!supabase
+												)
+													return;
+												const { error } = await supabase
+													.from("task_lists")
+													.insert({
+														task_id: selectedTaskId,
+														name: newChecklistName.trim(),
+													});
+												if (!error) {
+													showNewChecklistForm = false;
+													newChecklistName = "";
+													await loadTaskLists(
+														selectedTaskId,
+													);
+												}
+											}}>Crear</button
+										>
+										<button
+											type="button"
+											class="px-3 py-2 text-brand-text-muted hover:text-brand-text text-xs rounded-lg border border-brand-divider transition-colors"
+											onclick={() => {
+												showNewChecklistForm = false;
+												newChecklistName = "";
+											}}>Cancelar</button
+										>
 									</div>
 								</div>
 							{:else if taskLists.length === 0}
-								<div class="rounded-xl border border-dashed border-brand-divider p-6 text-center">
-									<p class="text-sm text-brand-text-muted mb-3">No hay checklists todavía.</p>
-									<button type="button" class="flex items-center gap-2 text-xs font-bold text-brand-accent hover:text-brand-accent/80 transition-colors mx-auto" onclick={() => { showNewChecklistForm = true; newChecklistName = ''; }}>
+								<div
+									class="rounded-xl border border-dashed border-brand-divider p-6 text-center"
+								>
+									<p
+										class="text-sm text-brand-text-muted mb-3"
+									>
+										No hay checklists todavía.
+									</p>
+									<button
+										type="button"
+										class="flex items-center gap-2 text-xs font-bold text-brand-accent hover:text-brand-accent/80 transition-colors mx-auto"
+										onclick={() => {
+											showNewChecklistForm = true;
+											newChecklistName = "";
+										}}
+									>
 										<Plus class="w-4 h-4" /> Crear primer checklist
 									</button>
 								</div>
 							{:else}
-								<button type="button" class="mt-3 flex items-center gap-2 text-xs font-bold text-brand-accent hover:text-brand-accent/80 transition-colors" onclick={() => { showNewChecklistForm = true; newChecklistName = ''; }}>
+								<button
+									type="button"
+									class="mt-3 flex items-center gap-2 text-xs font-bold text-brand-accent hover:text-brand-accent/80 transition-colors"
+									onclick={() => {
+										showNewChecklistForm = true;
+										newChecklistName = "";
+									}}
+								>
 									<Plus class="w-4 h-4" /> Añadir nueva checklist
 								</button>
 							{/if}
@@ -2465,39 +3419,70 @@
 					<!-- Subtareas -->
 					<div class="mt-8">
 						<div class="flex items-center justify-between mb-4">
-							<h4 class="text-base font-bold text-brand-text flex items-center gap-2">
-								<ListChecks class="w-5 h-5 text-brand-accent"/> Subtareas
+							<h4
+								class="text-base font-bold text-brand-text flex items-center gap-2"
+							>
+								<ListChecks class="w-5 h-5 text-brand-accent" />
+								Subtareas
 							</h4>
-							<span class="text-[10px] font-bold text-brand-text-muted bg-brand-surface-elevated px-2 py-0.5 rounded-full">
+							<span
+								class="text-[10px] font-bold text-brand-text-muted bg-brand-surface-elevated px-2 py-0.5 rounded-full"
+							>
 								{subtasks.length}
 							</span>
 						</div>
-						
+
 						{#if subtasks.length > 0}
 							<div class="space-y-2 mb-4">
 								{#each subtasks as subtask}
-									<div class="group flex items-center gap-3 bg-[#0d1216] border border-brand-divider p-3 rounded-lg hover:border-brand-accent/50 transition-colors cursor-pointer" onclick={() => openTaskUpdate(subtask)}>
-										<div class="w-4 h-4 rounded-full border {subtask.is_completed ? 'bg-brand-accent border-brand-accent' : 'border-brand-text-muted'} flex items-center justify-center shrink-0 transition-colors">
+									<div
+										role="button"
+										tabindex="0"
+										class="group flex items-center gap-3 bg-[#0d1216] border border-brand-divider p-3 rounded-lg hover:border-brand-accent/50 transition-colors cursor-pointer text-left"
+										onclick={() => openTaskUpdate(subtask)}
+										onkeydown={(e) =>
+											e.key === "Enter" &&
+											openTaskUpdate(subtask)}
+									>
+										<div
+											class="w-4 h-4 rounded-full border {subtask.is_completed
+												? 'bg-brand-accent border-brand-accent'
+												: 'border-brand-text-muted'} flex items-center justify-center shrink-0 transition-colors"
+										>
 											{#if subtask.is_completed}
-												<Check class="w-3 h-3 text-brand-bg" />
+												<Check
+													class="w-3 h-3 text-brand-bg"
+												/>
 											{/if}
 										</div>
-										<span class="text-sm {subtask.is_completed ? 'line-through text-brand-text-muted' : 'text-brand-text'} truncate flex-1">{subtask.title}</span>
-										<ChevronRight class="w-4 h-4 text-brand-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+										<span
+											class="text-sm {subtask.is_completed
+												? 'line-through text-brand-text-muted'
+												: 'text-brand-text'} truncate flex-1"
+											>{subtask.title}</span
+										>
+										<ChevronRight
+											class="w-4 h-4 text-brand-text-muted opacity-0 group-hover:opacity-100 transition-opacity"
+										/>
 									</div>
 								{/each}
 							</div>
 						{/if}
-						
+
 						<div class="flex items-center gap-2">
-							<input 
-								type="text" 
+							<input
+								type="text"
 								bind:value={subtaskTitle}
-								placeholder="Añadir nueva subtarea..." 
+								placeholder="Añadir nueva subtarea..."
 								class="flex-1 bg-transparent text-sm text-brand-text placeholder-brand-text-muted focus:outline-none border-b border-brand-divider focus:border-brand-accent py-2 transition-colors"
-								onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSubtask(); } }}
+								onkeydown={(e) => {
+									if (e.key === "Enter") {
+										e.preventDefault();
+										addSubtask();
+									}
+								}}
 							/>
-							<button 
+							<button
 								type="button"
 								onclick={addSubtask}
 								disabled={!subtaskTitle.trim()}
@@ -2511,28 +3496,48 @@
 					<!-- Actividad & Comentarios -->
 					<div class="mt-8 pt-6 border-t border-brand-divider">
 						<div class="flex items-center justify-between mb-4">
-							<h3 class="text-sm font-bold text-brand-text flex items-center gap-2">
-								<MessageSquare class="w-4 h-4 text-brand-accent" /> Actividad & Comentarios
+							<h3
+								class="text-sm font-bold text-brand-text flex items-center gap-2"
+							>
+								<MessageSquare
+									class="w-4 h-4 text-brand-accent"
+								/> Actividad & Comentarios
 							</h3>
-							<span class="text-xs text-brand-text-muted">{taskComments.length} comentarios</span>
+							<span class="text-xs text-brand-text-muted"
+								>{taskComments.length} comentarios</span
+							>
 						</div>
 
 						<div class="flex gap-3 mb-6">
-							<div class="w-8 h-8 rounded-full bg-brand-accent/20 border border-brand-accent/30 text-brand-accent flex items-center justify-center font-bold text-xs shrink-0">
+							<div
+								class="w-8 h-8 rounded-full bg-brand-accent/20 border border-brand-accent/30 text-brand-accent flex items-center justify-center font-bold text-xs shrink-0"
+							>
 								TÚ
 							</div>
-							<div class="flex-1 bg-[#0d1216] border border-brand-divider rounded-xl overflow-hidden focus-within:border-brand-accent transition-colors relative">
-								<textarea 
+							<div
+								class="flex-1 bg-[#0d1216] border border-brand-divider rounded-xl overflow-hidden focus-within:border-brand-accent transition-colors relative"
+							>
+								<textarea
 									bind:value={newCommentText}
-									placeholder="Escribe un comentario..." 
-									class="w-full bg-transparent text-sm text-brand-text placeholder-brand-text-muted focus:outline-none p-3 min-h-[80px] resize-none"
+									placeholder="Escribe un comentario..."
+									class="w-full bg-transparent text-sm text-brand-text placeholder-brand-text-muted focus:outline-none p-3 min-h-20 resize-none"
 								></textarea>
-								<div class="flex items-center justify-between px-3 pb-3">
+								<div
+									class="flex items-center justify-between px-3 pb-3"
+								>
 									<div class="flex gap-2">
-										<button class="text-brand-text-muted hover:text-brand-text transition-colors"><AtSign class="w-4 h-4" /></button>
-										<button class="text-brand-text-muted hover:text-brand-text transition-colors"><Paperclip class="w-4 h-4" /></button>
+										<button
+											class="text-brand-text-muted hover:text-brand-text transition-colors"
+											><AtSign class="w-4 h-4" /></button
+										>
+										<button
+											class="text-brand-text-muted hover:text-brand-text transition-colors"
+											><Paperclip
+												class="w-4 h-4"
+											/></button
+										>
 									</div>
-									<button 
+									<button
 										onclick={addTaskComment}
 										disabled={!newCommentText.trim()}
 										class="px-4 py-1.5 bg-brand-accent hover:bg-brand-accent/90 text-[#0d1216] text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
@@ -2546,122 +3551,276 @@
 						<div class="space-y-4">
 							{#each taskComments as comment}
 								<div class="flex gap-3">
-									<div class="w-8 h-8 rounded-full bg-brand-surface-elevated border border-brand-divider text-brand-text-muted flex items-center justify-center font-bold text-xs shrink-0 uppercase">
-										{comment.user?.raw_user_meta_data?.name?.slice(0, 2) || comment.user?.email?.slice(0, 2) || '??'}
+									<div
+										class="w-8 h-8 rounded-full bg-brand-surface-elevated border border-brand-divider text-brand-text-muted flex items-center justify-center font-bold text-xs shrink-0 uppercase"
+									>
+										{comment.user?.raw_user_meta_data?.name?.slice(
+											0,
+											2,
+										) ||
+											comment.user?.email?.slice(0, 2) ||
+											"??"}
 									</div>
-									<div class="flex-1 bg-[#0d1216] border border-brand-divider rounded-xl p-3">
-										<div class="flex items-center justify-between mb-2">
-											<div class="flex items-center gap-2 text-xs">
-												<span class="font-bold text-brand-text">{comment.user?.raw_user_meta_data?.name || comment.user?.email || 'Usuario'}</span>
-												<span class="text-brand-text-muted">• {new Date(comment.created_at).toLocaleDateString()} {new Date(comment.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+									<div
+										class="flex-1 bg-[#0d1216] border border-brand-divider rounded-xl p-3"
+									>
+										<div
+											class="flex items-center justify-between mb-2"
+										>
+											<div
+												class="flex items-center gap-2 text-xs"
+											>
+												<span
+													class="font-bold text-brand-text"
+													>{comment.user
+														?.raw_user_meta_data
+														?.name ||
+														comment.user?.email ||
+														"Usuario"}</span
+												>
+												<span
+													class="text-brand-text-muted"
+													>• {new Date(
+														comment.created_at,
+													).toLocaleDateString()}
+													{new Date(
+														comment.created_at,
+													).toLocaleTimeString([], {
+														hour: "2-digit",
+														minute: "2-digit",
+													})}</span
+												>
 											</div>
 										</div>
-										<p class="text-sm text-brand-text">{comment.content}</p>
+										<p class="text-sm text-brand-text">
+											{comment.content}
+										</p>
 									</div>
 								</div>
 							{/each}
 						</div>
 					</div>
-
 				</div>
 
 				<!-- Right Column (Sidebar) -->
 				<div class="space-y-6">
-					
 					<!-- Fechas & Horario -->
-					<div class="rounded-xl border border-brand-divider bg-[#0d1216] p-5">
-						<h4 class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2 mb-4"><Calendar class="w-4 h-4 text-brand-accent" /> Fechas & Horario</h4>
+					<div
+						class="rounded-xl border border-brand-divider bg-[#0d1216] p-5"
+					>
+						<h4
+							class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2 mb-4"
+						>
+							<Calendar class="w-4 h-4 text-brand-accent" /> Fechas
+							& Horario
+						</h4>
 						<div class="space-y-3">
 							<div>
-								<label class="block text-[10px] font-semibold text-brand-text-muted mb-1.5">Fecha de Inicio</label>
-								<div class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 cursor-pointer">
-									<DateTimePicker bind:value={editingDate} placeholder="Seleccionar inicio..." />
-									<Calendar class="w-3.5 h-3.5 text-brand-text-muted shrink-0 ml-2" />
+								<span
+									class="block text-[10px] font-semibold text-brand-text-muted mb-1.5"
+									>Fecha de Inicio</span
+								>
+								<div
+									class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 cursor-pointer"
+								>
+									<DateTimePicker
+										bind:value={editingDate}
+										placeholder="Seleccionar inicio..."
+									/>
+									<Calendar
+										class="w-3.5 h-3.5 text-brand-text-muted shrink-0 ml-2"
+									/>
 								</div>
 							</div>
 							<div>
-								<label class="block text-[10px] font-semibold text-brand-text-muted mb-1.5 flex justify-between">Fecha de Vencimiento</label>
-								<div class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 cursor-pointer">
-									<DateTimePicker bind:value={editingEndDate} placeholder="Seleccionar fin..." />
-									<Calendar class="w-3.5 h-3.5 text-brand-text-muted shrink-0 ml-2" />
+								<span
+									class="block text-[10px] font-semibold text-brand-text-muted mb-1.5 justify-between"
+									>Fecha de Vencimiento</span
+								>
+								<div
+									class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 cursor-pointer"
+								>
+									<DateTimePicker
+										bind:value={editingEndDate}
+										placeholder="Seleccionar fin..."
+									/>
+									<Calendar
+										class="w-3.5 h-3.5 text-brand-text-muted shrink-0 ml-2"
+									/>
 								</div>
 							</div>
-							<button class="flex items-center gap-2 text-[10px] font-bold text-brand-accent hover:underline mt-2">
-								<AlertCircle class="w-3.5 h-3.5" /> Recordatorio: 15 min antes
+							<button
+								class="flex items-center gap-2 text-[10px] font-bold text-brand-accent hover:underline mt-2"
+							>
+								<AlertCircle class="w-3.5 h-3.5" /> Recordatorio:
+								15 min antes
 							</button>
 						</div>
 					</div>
 
 					<!-- Miembros -->
-					<div class="rounded-xl border border-brand-divider bg-[#0d1216] p-5">
+					<div
+						class="rounded-xl border border-brand-divider bg-[#0d1216] p-5"
+					>
 						<div class="flex items-center justify-between mb-2">
-							<h4 class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2"><Users class="w-4 h-4 text-brand-accent" /> Miembros</h4>
+							<h4
+								class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2"
+							>
+								<Users class="w-4 h-4 text-brand-accent" /> Miembros
+							</h4>
 						</div>
-						
+
 						{#if contacts && contacts.length > 0}
 							<!-- Mostrar miembros actuales asignados -->
 							<div class="space-y-2 mb-3">
-								{#each contacts.filter(c => sharedWithIds.has(c.id)) as contact (contact.id)}
-									<div class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-lg p-2 px-3">
+								{#each contacts.filter( (c) => sharedWithIds.has(c.id), ) as contact (contact.id)}
+									<div
+										class="flex items-center justify-between bg-[#070b0e] border border-brand-divider rounded-lg p-2 px-3"
+									>
 										<div class="flex items-center gap-2">
-											<div class="w-6 h-6 rounded-full bg-brand-accent/20 text-brand-accent font-bold text-[10px] flex items-center justify-center uppercase">{contact.nickname ? contact.nickname.substring(0, 2) : contact.display_name.substring(0, 2)}</div>
-											<span class="text-xs font-bold text-brand-text truncate">{contactLabel(contact)}</span>
+											<div
+												class="w-6 h-6 rounded-full bg-brand-accent/20 text-brand-accent font-bold text-[10px] flex items-center justify-center uppercase"
+											>
+												{contact.nickname
+													? contact.nickname.substring(
+															0,
+															2,
+														)
+													: contact.display_name.substring(
+															0,
+															2,
+														)}
+											</div>
+											<span
+												class="text-xs font-bold text-brand-text truncate"
+												>{contactLabel(contact)}</span
+											>
 										</div>
-										<button class="text-brand-text-muted hover:text-red-400 transition-colors" onclick={() => toggleShareWithContact(contact.id)} disabled={shareBusyId === contact.id}><X class="w-4 h-4"/></button>
+										<button
+											class="text-brand-text-muted hover:text-red-400 transition-colors"
+											onclick={() =>
+												toggleShareWithContact(
+													contact.id,
+												)}
+											disabled={shareBusyId ===
+												contact.id}
+											><X class="w-4 h-4" /></button
+										>
 									</div>
 								{/each}
 								{#if Array.from(sharedWithIds).length === 0}
-									<p class="text-[10px] text-brand-text-muted italic">Sin miembros asignados</p>
+									<p
+										class="text-[10px] text-brand-text-muted italic"
+									>
+										Sin miembros asignados
+									</p>
 								{/if}
 							</div>
 
 							<!-- Acordeón para añadir más -->
 							<details class="group">
-								<summary class="flex items-center justify-between cursor-pointer list-none text-[10px] font-bold text-brand-accent hover:underline outline-none">
+								<summary
+									class="flex items-center justify-between cursor-pointer list-none text-[10px] font-bold text-brand-accent hover:underline outline-none"
+								>
 									<span>+ Añadir miembros</span>
-									<ChevronDown class="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+									<ChevronDown
+										class="w-3.5 h-3.5 group-open:rotate-180 transition-transform"
+									/>
 								</summary>
-								<div class="space-y-2 max-h-40 overflow-y-auto custom-scrollbar mt-3 border-t border-brand-divider pt-3">
-									{#each contacts.filter(c => !sharedWithIds.has(c.id)) as contact (contact.id)}
+								<div
+									class="space-y-2 max-h-40 overflow-y-auto custom-scrollbar mt-3 border-t border-brand-divider pt-3"
+								>
+									{#each contacts.filter((c) => !sharedWithIds.has(c.id)) as contact (contact.id)}
 										<button
 											type="button"
 											class="w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors border-brand-divider bg-[#070b0e] hover:border-brand-accent/50"
-											disabled={shareBusyId === contact.id}
-											onclick={() => toggleShareWithContact(contact.id)}
+											disabled={shareBusyId ===
+												contact.id}
+											onclick={() =>
+												toggleShareWithContact(
+													contact.id,
+												)}
 										>
-											<div class="flex items-center gap-2 min-w-0">
-												<div class="w-6 h-6 rounded-full bg-brand-surface-elevated text-brand-text-muted font-bold text-[10px] flex items-center justify-center shrink-0 uppercase">
-													{contact.nickname ? contact.nickname.substring(0, 2) : contact.display_name.substring(0, 2)}
+											<div
+												class="flex items-center gap-2 min-w-0"
+											>
+												<div
+													class="w-6 h-6 rounded-full bg-brand-surface-elevated text-brand-text-muted font-bold text-[10px] flex items-center justify-center shrink-0 uppercase"
+												>
+													{contact.nickname
+														? contact.nickname.substring(
+																0,
+																2,
+															)
+														: contact.display_name.substring(
+																0,
+																2,
+															)}
 												</div>
-												<span class="text-xs font-bold text-brand-text truncate">{contactLabel(contact)}</span>
+												<span
+													class="text-xs font-bold text-brand-text truncate"
+													>{contactLabel(
+														contact,
+													)}</span
+												>
 											</div>
-											<span class="text-[9px] font-bold shrink-0 text-brand-text-muted hover:text-brand-accent">
-												{shareBusyId === contact.id ? '...' : '+ Añadir'}
+											<span
+												class="text-[9px] font-bold shrink-0 text-brand-text-muted hover:text-brand-accent"
+											>
+												{shareBusyId === contact.id
+													? "..."
+													: "+ Añadir"}
 											</span>
 										</button>
 									{/each}
-									{#if contacts.filter(c => !sharedWithIds.has(c.id)).length === 0}
-										<p class="text-[10px] text-brand-text-muted text-center py-2">Todos tus contactos ya están añadidos.</p>
+									{#if contacts.filter((c) => !sharedWithIds.has(c.id)).length === 0}
+										<p
+											class="text-[10px] text-brand-text-muted text-center py-2"
+										>
+											Todos tus contactos ya están
+											añadidos.
+										</p>
 									{/if}
 								</div>
 							</details>
 						{:else}
-							<p class="text-[10px] text-brand-text-muted text-center py-2">No tienes contactos disponibles.</p>
+							<p
+								class="text-[10px] text-brand-text-muted text-center py-2"
+							>
+								No tienes contactos disponibles.
+							</p>
 						{/if}
 					</div>
 
 					<!-- Etiquetas -->
-					<div class="rounded-xl border border-brand-divider bg-[#0d1216] p-5">
+					<div
+						class="rounded-xl border border-brand-divider bg-[#0d1216] p-5"
+					>
 						<div class="flex items-center justify-between mb-4">
-							<h4 class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2"><Tag class="w-4 h-4 text-brand-accent" /> Etiquetas</h4>
+							<h4
+								class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2"
+							>
+								<Tag class="w-4 h-4 text-brand-accent" /> Etiquetas
+							</h4>
 						</div>
-						<TagSelect {tags} bind:value={editingTagId} id="edit-task-tag" />
+						<TagSelect
+							{tags}
+							bind:value={editingTagId}
+							id="edit-task-tag"
+						/>
 					</div>
 
 					<!-- Vinculaciones -->
-					<div class="rounded-xl border border-brand-divider bg-[#0d1216] p-5">
-						<h4 class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2 mb-4"><Activity class="w-4 h-4 text-brand-accent" /> Vinculaciones Fokuz</h4>
-						<button 
+					<div
+						class="rounded-xl border border-brand-divider bg-[#0d1216] p-5"
+					>
+						<h4
+							class="text-xs font-bold text-brand-text-muted uppercase tracking-wider flex items-center gap-2 mb-4"
+						>
+							<Activity class="w-4 h-4 text-brand-accent" /> Vinculaciones
+							Fokuz
+						</h4>
+						<button
 							class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-brand-accent/50 text-brand-accent hover:bg-brand-accent/10 transition-colors text-[11px] font-bold mb-3"
 							onclick={focusOnSelectedTask}
 						>
@@ -2669,58 +3828,84 @@
 						</button>
 
 						{#if selectedTaskLinkedNoteId}
-							<div class="flex flex-col gap-2 p-3 rounded-lg border border-brand-divider bg-[#070b0e]">
-								<div class="flex items-center justify-between mb-1">
-									<span class="text-[10px] font-bold text-brand-text-muted uppercase">Nota Vinculada</span>
-									<button class="text-brand-text-muted hover:text-red-400 transition-colors" onclick={unlinkNoteFromTask} title="Desvincular"><X class="w-3.5 h-3.5" /></button>
+							<div
+								class="flex flex-col gap-2 p-3 rounded-lg border border-brand-divider bg-[#070b0e]"
+							>
+								<div
+									class="flex items-center justify-between mb-1"
+								>
+									<span
+										class="text-[10px] font-bold text-brand-text-muted uppercase"
+										>Nota Vinculada</span
+									>
+									<button
+										class="text-brand-text-muted hover:text-red-400 transition-colors"
+										onclick={unlinkNoteFromTask}
+										title="Desvincular"
+										><X class="w-3.5 h-3.5" /></button
+									>
 								</div>
-								<button class="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-brand-accent text-brand-bg hover:brightness-110 transition-all text-[11px] font-bold shadow-[0_0_10px_var(--color-brand-accent-muted)]" onclick={() => goto(`/notas/${selectedTaskLinkedNoteId}`)}>
-									<StickyNote class="w-3.5 h-3.5" /> {selectedTaskLinkedNoteTitle || 'Ver Nota'}
+								<button
+									class="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-brand-accent text-brand-bg hover:brightness-110 transition-all text-[11px] font-bold shadow-[0_0_10px_var(--color-brand-accent-muted)]"
+									onclick={() =>
+										goto(
+											`/notas/${selectedTaskLinkedNoteId}`,
+										)}
+								>
+									<StickyNote class="w-3.5 h-3.5" />
+									{selectedTaskLinkedNoteTitle || "Ver Nota"}
 								</button>
 							</div>
 						{:else}
-							<button 
+							<button
 								class="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-brand-divider text-brand-text-muted hover:text-brand-text hover:bg-brand-surface transition-colors text-[11px] font-bold"
 								onclick={openLinkNoteModal}
 							>
-								<StickyNote class="w-3.5 h-3.5" /> Vincular a una Nota
+								<StickyNote class="w-3.5 h-3.5" /> Vincular a una
+								Nota
 							</button>
 						{/if}
 					</div>
-
 				</div>
-
 			</div>
 
 			<!-- Footer -->
-			<div class="p-4 border-t border-brand-divider bg-[#070b0e] rounded-b-2xl flex flex-col sm:flex-row sm:items-center justify-between mt-auto gap-4">
-				<button 
+			<div
+				class="p-4 border-t border-brand-divider bg-[#070b0e] rounded-b-2xl flex flex-col sm:flex-row sm:items-center justify-between mt-auto gap-4"
+			>
+				<button
 					class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors text-xs font-bold w-full sm:w-auto"
 					onclick={deleteTask}
 				>
 					<Trash2 class="w-4 h-4" /> Eliminar tarea
 				</button>
-				
+
 				<!-- Success/Error Messages injected in footer -->
 				<div class="flex-1 flex justify-center">
 					{#if taskActionError}
-						<p class="text-sm text-red-400 font-bold">{taskActionError}</p>
+						<p class="text-sm text-red-400 font-bold">
+							{taskActionError}
+						</p>
 					{/if}
 					{#if taskActionSuccess}
-						<div class="rounded-full bg-brand-accent/20 border border-brand-accent/30 text-brand-accent text-xs font-bold px-3 py-1.5">
+						<div
+							class="rounded-full bg-brand-accent/20 border border-brand-accent/30 text-brand-accent text-xs font-bold px-3 py-1.5"
+						>
 							{taskActionSuccess}
 						</div>
 					{/if}
 				</div>
 
-				<div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-					<button 
+				<div
+					class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto"
+				>
+					<button
 						class="px-5 py-2.5 rounded-lg border border-brand-divider bg-[#0d1216] text-brand-text-muted hover:text-brand-text transition-colors text-xs font-bold w-full sm:w-auto flex justify-center items-center"
-						onclick={() => showTaskUpdate = false}
+						onclick={() => (showTaskUpdate = false)}
 					>
 						Cancelar
 					</button>
-					<button 
+					<button
 						class="flex justify-center items-center gap-2 px-6 py-2.5 rounded-lg bg-brand-accent text-brand-bg hover:brightness-110 transition-all text-xs font-black shadow-[0_0_15px_var(--color-brand-accent-muted)] w-full sm:w-auto"
 						onclick={saveTaskDetails}
 					>
@@ -2732,56 +3917,113 @@
 	</div>
 {/if}
 {#if showNewTask}
-	<div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+	<div
+		class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4"
+	>
+		<div
+			class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-lg p-6 shadow-2xl"
+		>
 			<div class="flex justify-between items-center mb-6">
 				<h3 class="text-lg font-bold text-brand-text">Nueva Tarjeta</h3>
-				<button class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted" onclick={() => showNewTask = false}><X class="w-5 h-5"/></button>
+				<button
+					class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted"
+					onclick={() => (showNewTask = false)}
+					><X class="w-5 h-5" /></button
+				>
 			</div>
-			
+
 			<div class="space-y-4 mb-6">
 				<div>
-					<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Título</label>
-					<input 
-						type="text" 
-						bind:value={newTaskTitle} 
-						placeholder="¿Qué necesitas hacer?" 
+					<span
+						class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+						>Título</span
+					>
+					<input
+						type="text"
+						bind:value={newTaskTitle}
+						placeholder="¿Qué necesitas hacer?"
 						class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-brand-text placeholder-brand-text-muted focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none"
-						onkeydown={(e) => e.key === 'Enter' && addTask()}
+						onkeydown={(e) => e.key === "Enter" && addTask()}
 					/>
 				</div>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 					<div>
-						<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Fecha de Inicio</label>
-						<div class="flex items-center justify-between bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-2 cursor-pointer focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent transition-all">
-							<DateTimePicker bind:value={newTaskStartDate} placeholder="dd/mm/aaaa" />
-							<Calendar class="w-4 h-4 text-brand-text-muted shrink-0 ml-2" />
+						<span
+							class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+							>Fecha de Inicio</span
+						>
+						<div
+							class="flex items-center justify-between bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-2 cursor-pointer focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent transition-all"
+						>
+							<DateTimePicker
+								bind:value={newTaskStartDate}
+								placeholder="dd/mm/aaaa"
+							/>
+							<Calendar
+								class="w-4 h-4 text-brand-text-muted shrink-0 ml-2"
+							/>
 						</div>
 					</div>
 					<div>
-						<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Fecha de Fin (Opcional)</label>
-						<div class="flex items-center justify-between bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-2 cursor-pointer focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent transition-all">
-							<DateTimePicker bind:value={newTaskEndDate} placeholder="dd/mm/aaaa" />
-							<Calendar class="w-4 h-4 text-brand-text-muted shrink-0 ml-2" />
+						<span
+							class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+							>Fecha de Fin (Opcional)</span
+						>
+						<div
+							class="flex items-center justify-between bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-2 cursor-pointer focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent transition-all"
+						>
+							<DateTimePicker
+								bind:value={newTaskEndDate}
+								placeholder="dd/mm/aaaa"
+							/>
+							<Calendar
+								class="w-4 h-4 text-brand-text-muted shrink-0 ml-2"
+							/>
 						</div>
 					</div>
 				</div>
-				
+
 				{#if contacts && contacts.length > 0}
 					<div>
-						<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Compartir con Miembros</label>
+						<span
+							class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+							>Compartir con Miembros</span
+						>
 						<div class="flex flex-wrap gap-2">
 							{#each contacts as contact}
-								<button 
-									class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center gap-2 {newTaskSharedWith.includes(contact.id) ? 'bg-brand-accent/10 border-brand-accent text-brand-accent' : 'bg-[#0d1216] border-brand-divider text-brand-text-muted hover:bg-brand-surface-elevated'}"
+								<button
+									class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center gap-2 {newTaskSharedWith.includes(
+										contact.id,
+									)
+										? 'bg-brand-accent/10 border-brand-accent text-brand-accent'
+										: 'bg-[#0d1216] border-brand-divider text-brand-text-muted hover:bg-brand-surface-elevated'}"
 									onclick={() => {
-										if (newTaskSharedWith.includes(contact.id)) newTaskSharedWith = newTaskSharedWith.filter(id => id !== contact.id);
-										else newTaskSharedWith = [...newTaskSharedWith, contact.id];
+										if (
+											newTaskSharedWith.includes(
+												contact.id,
+											)
+										)
+											newTaskSharedWith =
+												newTaskSharedWith.filter(
+													(id) => id !== contact.id,
+												);
+										else
+											newTaskSharedWith = [
+												...newTaskSharedWith,
+												contact.id,
+											];
 									}}
 								>
-									<div class="w-4 h-4 rounded-full bg-brand-surface-elevated flex items-center justify-center text-[8px] uppercase font-black text-brand-text">
-										{contact.nickname ? contact.nickname.substring(0, 2) : contact.display_name.substring(0, 2)}
+									<div
+										class="w-4 h-4 rounded-full bg-brand-surface-elevated flex items-center justify-center text-[8px] uppercase font-black text-brand-text"
+									>
+										{contact.nickname
+											? contact.nickname.substring(0, 2)
+											: contact.display_name.substring(
+													0,
+													2,
+												)}
 									</div>
 									{contact.nickname || contact.display_name}
 								</button>
@@ -2792,13 +4034,21 @@
 
 				{#if tags.length > 0}
 					<div>
-						<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Etiqueta</label>
+						<span
+							class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+							>Etiqueta</span
+						>
 						<div class="flex flex-wrap gap-2">
 							{#each tags as tag}
-								<button 
-									class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors {selectedTagId === tag.id ? 'bg-brand-surface-elevated' : 'bg-[#0d1216] border-brand-divider text-brand-text-muted hover:bg-brand-surface-elevated'}"
-									style={selectedTagId === tag.id ? `border-color: ${tag.color}; color: ${tag.color};` : ''}
-									onclick={() => selectedTagId = tag.id}
+								<button
+									class="px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors {selectedTagId ===
+									tag.id
+										? 'bg-brand-surface-elevated'
+										: 'bg-[#0d1216] border-brand-divider text-brand-text-muted hover:bg-brand-surface-elevated'}"
+									style={selectedTagId === tag.id
+										? `border-color: ${tag.color}; color: ${tag.color};`
+										: ""}
+									onclick={() => (selectedTagId = tag.id)}
 								>
 									{tag.name}
 								</button>
@@ -2808,10 +4058,18 @@
 				{/if}
 			</div>
 
-			<div class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto">
-				<button class="w-full sm:w-auto flex justify-center items-center px-4 py-2 rounded-xl text-brand-text font-bold hover:bg-brand-surface-elevated transition-colors" onclick={() => showNewTask = false}>Cancelar</button>
-				<button class="w-full sm:w-auto flex justify-center items-center px-5 py-2 bg-brand-accent text-brand-bg font-bold rounded-xl hover:brightness-105 transition-colors gap-2 shadow-[0_0_10px_var(--color-brand-accent-muted)]" onclick={addTask}>
-					<Plus class="w-4 h-4"/> Crear
+			<div
+				class="flex flex-col sm:flex-row justify-end gap-3 w-full sm:w-auto"
+			>
+				<button
+					class="w-full sm:w-auto flex justify-center items-center px-4 py-2 rounded-xl text-brand-text font-bold hover:bg-brand-surface-elevated transition-colors"
+					onclick={() => (showNewTask = false)}>Cancelar</button
+				>
+				<button
+					class="w-full sm:w-auto flex justify-center items-center px-5 py-2 bg-brand-accent text-brand-bg font-bold rounded-xl hover:brightness-105 transition-colors gap-2 shadow-[0_0_10px_var(--color-brand-accent-muted)]"
+					onclick={addTask}
+				>
+					<Plus class="w-4 h-4" /> Crear
 				</button>
 			</div>
 		</div>
@@ -2819,51 +4077,102 @@
 {/if}
 
 {#if showTags}
-	<div class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-md p-6 shadow-2xl flex flex-col max-h-[80vh]">
+	<div
+		class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center backdrop-blur-sm p-4"
+	>
+		<div
+			class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-md p-6 shadow-2xl flex flex-col max-h-[80vh]"
+		>
 			<div class="flex justify-between items-center mb-6 shrink-0">
-				<h3 class="text-lg font-bold text-brand-text">Gestionar Etiquetas</h3>
-				<button class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted" onclick={() => showTags = false}><X class="w-5 h-5"/></button>
+				<h3 class="text-lg font-bold text-brand-text">
+					Gestionar Etiquetas
+				</h3>
+				<button
+					class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted"
+					onclick={() => (showTags = false)}
+					><X class="w-5 h-5" /></button
+				>
 			</div>
-			
-			<div class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 mb-6">
+
+			<div
+				class="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 mb-6"
+			>
 				{#each tags as tag (tag.id)}
 					{#if tagToEdit === tag.id}
-						<div class="flex flex-col gap-3 p-3 rounded-xl bg-[#0d1216] border border-brand-accent shadow-[0_0_10px_var(--color-brand-accent-muted)]">
-							<input 
-								type="text" 
-								bind:value={editTagName} 
-								placeholder="Nombre..." 
+						<div
+							class="flex flex-col gap-3 p-3 rounded-xl bg-[#0d1216] border border-brand-accent shadow-[0_0_10px_var(--color-brand-accent-muted)]"
+						>
+							<input
+								type="text"
+								bind:value={editTagName}
+								placeholder="Nombre..."
 								class="w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2 text-sm text-brand-text outline-none focus:border-brand-accent"
-								onkeydown={(e) => e.key === 'Enter' && saveTagEdit()}
+								onkeydown={(e) =>
+									e.key === "Enter" && saveTagEdit()}
 							/>
-							<div class="flex flex-wrap items-center justify-between gap-2">
-								<div class="flex gap-1.5 items-center bg-brand-surface border border-brand-divider rounded-lg px-2 py-1.5">
+							<div
+								class="flex flex-wrap items-center justify-between gap-2"
+							>
+								<div
+									class="flex gap-1.5 items-center bg-brand-surface border border-brand-divider rounded-lg px-2 py-1.5"
+								>
 									{#each TAG_COLORS as color}
-										<button 
-											class="w-4 h-4 rounded-full transition-transform {editTagColor === color ? 'scale-125 ring-2 ring-brand-text ring-offset-1 ring-offset-brand-surface' : 'hover:scale-110'}" 
+										<button
+											aria-label="Color"
+											class="w-4 h-4 rounded-full transition-transform {editTagColor ===
+											color
+												? 'scale-125 ring-2 ring-brand-text ring-offset-1 ring-offset-brand-surface'
+												: 'hover:scale-110'}"
 											style="background-color: {color}"
-											onclick={() => editTagColor = color}
+											onclick={() =>
+												(editTagColor = color)}
 										></button>
 									{/each}
 								</div>
 								<div class="flex gap-2">
-									<button class="px-3 py-1.5 bg-brand-surface text-brand-text-muted hover:text-brand-text font-bold rounded-lg text-xs border border-brand-divider transition-colors" onclick={() => tagToEdit = null}>Cancelar</button>
-									<button class="px-3 py-1.5 bg-brand-accent text-brand-bg font-bold rounded-lg text-xs hover:brightness-105 transition-colors" onclick={saveTagEdit}>Guardar</button>
+									<button
+										class="px-3 py-1.5 bg-brand-surface text-brand-text-muted hover:text-brand-text font-bold rounded-lg text-xs border border-brand-divider transition-colors"
+										onclick={() => (tagToEdit = null)}
+										>Cancelar</button
+									>
+									<button
+										class="px-3 py-1.5 bg-brand-accent text-brand-bg font-bold rounded-lg text-xs hover:brightness-105 transition-colors"
+										onclick={saveTagEdit}>Guardar</button
+									>
 								</div>
 							</div>
 						</div>
 					{:else}
-						<div class="flex items-center justify-between p-3 rounded-xl bg-[#0d1216] border border-brand-divider group">
+						<div
+							class="flex items-center justify-between p-3 rounded-xl bg-[#0d1216] border border-brand-divider group"
+						>
 							<div class="flex items-center gap-3">
-								<span class="w-3 h-3 rounded-full" style="background-color: {tag.color}"></span>
-								<span class="text-sm font-semibold text-brand-text">{tag.name}</span>
+								<span
+									class="w-3 h-3 rounded-full"
+									style="background-color: {tag.color}"
+								></span>
+								<span
+									class="text-sm font-semibold text-brand-text"
+									>{tag.name}</span
+								>
 							</div>
-							<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-								<button class="text-brand-text-muted hover:text-brand-text p-1.5 rounded-md hover:bg-brand-surface-elevated" onclick={() => { tagToEdit = tag.id; editTagName = tag.name; editTagColor = tag.color; }}>
+							<div
+								class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+							>
+								<button
+									class="text-brand-text-muted hover:text-brand-text p-1.5 rounded-md hover:bg-brand-surface-elevated"
+									onclick={() => {
+										tagToEdit = tag.id;
+										editTagName = tag.name;
+										editTagColor = tag.color;
+									}}
+								>
 									<Edit2 class="w-4 h-4" />
 								</button>
-								<button class="text-brand-text-muted hover:text-red-400 p-1.5 rounded-md hover:bg-brand-surface-elevated" onclick={() => tagToDelete = tag.id}>
+								<button
+									class="text-brand-text-muted hover:text-red-400 p-1.5 rounded-md hover:bg-brand-surface-elevated"
+									onclick={() => (tagToDelete = tag.id)}
+								>
 									<Trash2 class="w-4 h-4" />
 								</button>
 							</div>
@@ -2877,26 +4186,41 @@
 			</div>
 
 			<div class="shrink-0 pt-4 border-t border-brand-divider">
-				<h4 class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-3">Crear nueva etiqueta</h4>
+				<h4
+					class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-3"
+				>
+					Crear nueva etiqueta
+				</h4>
 				<div class="flex flex-col gap-3">
-					<input 
-						type="text" 
-						bind:value={newTagName} 
-						placeholder="Nombre..." 
+					<input
+						type="text"
+						bind:value={newTagName}
+						placeholder="Nombre..."
 						class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-3 py-2 text-sm text-brand-text placeholder-brand-text-muted focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none"
-						onkeydown={(e) => e.key === 'Enter' && addTag()}
+						onkeydown={(e) => e.key === "Enter" && addTag()}
 					/>
-					<div class="flex flex-wrap items-center justify-between gap-2">
-						<div class="flex gap-1.5 items-center bg-[#0d1216] border border-brand-divider rounded-xl px-2 py-1.5">
+					<div
+						class="flex flex-wrap items-center justify-between gap-2"
+					>
+						<div
+							class="flex gap-1.5 items-center bg-[#0d1216] border border-brand-divider rounded-xl px-2 py-1.5"
+						>
 							{#each TAG_COLORS as color}
-								<button 
-									class="w-4 h-4 rounded-full transition-transform {newTagColor === color ? 'scale-125 ring-2 ring-brand-text ring-offset-1 ring-offset-[#0d1216]' : 'hover:scale-110'}" 
+								<button
+									aria-label="Color"
+									class="w-4 h-4 rounded-full transition-transform {newTagColor ===
+									color
+										? 'scale-125 ring-2 ring-brand-text ring-offset-1 ring-offset-[#0d1216]'
+										: 'hover:scale-110'}"
 									style="background-color: {color}"
-									onclick={() => newTagColor = color}
+									onclick={() => (newTagColor = color)}
 								></button>
 							{/each}
 						</div>
-						<button class="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-brand-accent text-brand-bg hover:brightness-105 font-bold rounded-xl transition-colors" onclick={addTag}>
+						<button
+							class="flex items-center justify-center gap-1.5 px-4 py-1.5 bg-brand-accent text-brand-bg hover:brightness-105 font-bold rounded-xl transition-colors"
+							onclick={addTag}
+						>
 							<Plus class="w-4 h-4" /> Crear
 						</button>
 					</div>
@@ -2907,47 +4231,89 @@
 {/if}
 
 {#if tagToDelete}
-	<div class="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
-			<div class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4">
+	<div
+		class="fixed inset-0 bg-black/80 z-60 flex items-center justify-center backdrop-blur-sm p-4"
+	>
+		<div
+			class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center"
+		>
+			<div
+				class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4"
+			>
 				<AlertTriangle class="w-6 h-6" />
 			</div>
-			<h3 class="text-lg font-bold text-brand-text mb-2">¿Eliminar etiqueta?</h3>
-			<p class="text-sm text-brand-text-muted mb-6">Las tareas que tenían esta etiqueta quedarán sin etiqueta. Esta acción no se puede deshacer.</p>
+			<h3 class="text-lg font-bold text-brand-text mb-2">
+				¿Eliminar etiqueta?
+			</h3>
+			<p class="text-sm text-brand-text-muted mb-6">
+				Las tareas que tenían esta etiqueta quedarán sin etiqueta. Esta
+				acción no se puede deshacer.
+			</p>
 			<div class="flex justify-center gap-3 w-full">
-				<button class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors" onclick={() => tagToDelete = null}>Cancelar</button>
-				<button class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]" onclick={() => { if(tagToDelete !== null) deleteTag(tagToDelete); }}>Eliminar</button>
+				<button
+					class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors"
+					onclick={() => (tagToDelete = null)}>Cancelar</button
+				>
+				<button
+					class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+					onclick={() => {
+						if (tagToDelete !== null) deleteTag(tagToDelete);
+					}}>Eliminar</button
+				>
 			</div>
 		</div>
 	</div>
 {/if}
 
 {#if showCrearListaModal}
-	<div class="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col">
+	<div
+		class="fixed inset-0 bg-black/80 z-60 flex items-center justify-center backdrop-blur-sm p-4"
+	>
+		<div
+			class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col"
+		>
 			<div class="flex justify-between items-center mb-6">
-				<h3 class="text-lg font-bold text-brand-text">Crear nueva lista</h3>
-				<button class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted" onclick={() => { showCrearListaModal = false; newListName = ''; }}><X class="w-5 h-5"/></button>
+				<h3 class="text-lg font-bold text-brand-text">
+					Crear nueva lista
+				</h3>
+				<button
+					class="p-1.5 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted"
+					onclick={() => {
+						showCrearListaModal = false;
+						newListName = "";
+					}}><X class="w-5 h-5" /></button
+				>
 			</div>
-			
+
 			<div class="space-y-4 mb-6">
 				<div>
-					<label class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2">Nombre de la lista</label>
-					<input 
-						type="text" 
-						bind:value={newListName} 
-						placeholder="Ej. En Progreso, Revisión..." 
+					<span
+						class="block text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2"
+						>Nombre de la lista</span
+					>
+					<input
+						type="text"
+						bind:value={newListName}
+						placeholder="Ej. En Progreso, Revisión..."
 						class="w-full bg-[#0d1216] border border-brand-divider rounded-xl px-4 py-3 text-sm text-brand-text placeholder-brand-text-muted focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none"
-						onkeydown={(e) => e.key === 'Enter' && confirmAddList()}
-						autofocus
+						onkeydown={(e) => e.key === "Enter" && confirmAddList()}
 					/>
 				</div>
 			</div>
 
 			<div class="flex justify-end gap-3">
-				<button class="px-4 py-2 rounded-xl text-brand-text font-bold hover:bg-brand-surface-elevated transition-colors" onclick={() => { showCrearListaModal = false; newListName = ''; }}>Cancelar</button>
-				<button class="px-5 py-2 bg-brand-accent text-brand-bg font-bold rounded-xl hover:brightness-105 transition-colors flex items-center gap-2 shadow-[0_0_10px_var(--color-brand-accent-muted)]" onclick={confirmAddList}>
-					<Plus class="w-4 h-4"/> Crear
+				<button
+					class="px-4 py-2 rounded-xl text-brand-text font-bold hover:bg-brand-surface-elevated transition-colors"
+					onclick={() => {
+						showCrearListaModal = false;
+						newListName = "";
+					}}>Cancelar</button
+				>
+				<button
+					class="px-5 py-2 bg-brand-accent text-brand-bg font-bold rounded-xl hover:brightness-105 transition-colors flex items-center gap-2 shadow-[0_0_10px_var(--color-brand-accent-muted)]"
+					onclick={confirmAddList}
+				>
+					<Plus class="w-4 h-4" /> Crear
 				</button>
 			</div>
 		</div>
@@ -2955,16 +4321,36 @@
 {/if}
 
 {#if listToDelete}
-	<div class="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
-			<div class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4">
+	<div
+		class="fixed inset-0 bg-black/80 z-60 flex items-center justify-center backdrop-blur-sm p-4"
+	>
+		<div
+			class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center"
+		>
+			<div
+				class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4"
+			>
 				<AlertTriangle class="w-6 h-6" />
 			</div>
-			<h3 class="text-lg font-bold text-brand-text mb-2">¿Eliminar esta lista?</h3>
-			<p class="text-sm text-brand-text-muted mb-6">Todas las tareas dentro de esta lista también serán eliminadas. Esta acción no se puede deshacer.</p>
+			<h3 class="text-lg font-bold text-brand-text mb-2">
+				¿Eliminar esta lista?
+			</h3>
+			<p class="text-sm text-brand-text-muted mb-6">
+				Todas las tareas dentro de esta lista también serán eliminadas.
+				Esta acción no se puede deshacer.
+			</p>
 			<div class="flex justify-center gap-3 w-full">
-				<button class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors" onclick={() => listToDelete = null}>Cancelar</button>
-				<button class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]" onclick={() => { if(listToDelete !== null) confirmDeleteList(listToDelete); }}>Eliminar</button>
+				<button
+					class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors"
+					onclick={() => (listToDelete = null)}>Cancelar</button
+				>
+				<button
+					class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+					onclick={() => {
+						if (listToDelete !== null)
+							confirmDeleteList(listToDelete);
+					}}>Eliminar</button
+				>
 			</div>
 		</div>
 	</div>
@@ -2972,56 +4358,101 @@
 
 <!-- Modal Vincular Nota -->
 {#if showLinkNoteModal}
-	<div class="fixed inset-0 bg-[#070b0e]/90 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
-		<div class="bg-[#0d1216] border border-brand-divider rounded-2xl p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]">
+	<div
+		class="fixed inset-0 bg-[#070b0e]/90 flex items-center justify-center z-100 p-4 backdrop-blur-sm"
+	>
+		<div
+			class="bg-[#0d1216] border border-brand-divider rounded-2xl p-6 w-full max-w-md shadow-2xl flex flex-col max-h-[80vh]"
+		>
 			<div class="flex items-center justify-between mb-6">
-				<h3 class="text-lg font-black text-brand-text flex items-center gap-2">
+				<h3
+					class="text-lg font-black text-brand-text flex items-center gap-2"
+				>
 					<StickyNote class="w-5 h-5 text-brand-accent" /> Vincular Nota
 				</h3>
-				<button class="p-1 rounded-md text-brand-text-muted hover:bg-brand-surface hover:text-brand-text transition-colors" onclick={() => showLinkNoteModal = false}>
+				<button
+					class="p-1 rounded-md text-brand-text-muted hover:bg-brand-surface hover:text-brand-text transition-colors"
+					onclick={() => (showLinkNoteModal = false)}
+				>
 					<X class="w-5 h-5" />
 				</button>
 			</div>
 			<div class="mb-4">
-				<input 
-					type="text" 
+				<input
+					type="text"
 					bind:value={linkModalSearchQuery}
-					placeholder="Buscar nota por título..." 
+					placeholder="Buscar nota por título..."
 					class="w-full bg-[#070b0e] border border-brand-divider rounded-lg px-3 py-2 text-sm font-semibold text-brand-text placeholder:text-brand-text-muted focus:outline-none focus:border-brand-accent transition-colors"
-					autofocus
 				/>
 			</div>
 			<div class="flex-1 overflow-y-auto custom-scrollbar space-y-4">
 				{#if linkNotesLoading}
-					<p class="text-xs text-brand-text-muted text-center py-4">Cargando notas...</p>
+					<p class="text-xs text-brand-text-muted text-center py-4">
+						Cargando notas...
+					</p>
 				{:else}
-					{@const filteredLinkNotes = linkableNotes.filter(n => n.title.toLowerCase().includes(linkModalSearchQuery.toLowerCase()))}
+					{@const filteredLinkNotes = linkableNotes.filter((n) =>
+						n.title
+							.toLowerCase()
+							.includes(linkModalSearchQuery.toLowerCase()),
+					)}
 					{#if filteredLinkNotes.length === 0}
-						<p class="text-xs text-brand-text-muted text-center py-4">No se encontraron notas.</p>
+						<p
+							class="text-xs text-brand-text-muted text-center py-4"
+						>
+							No se encontraron notas.
+						</p>
 					{:else}
 						{#each linkableFolders as folder}
-							{@const folderNotes = filteredLinkNotes.filter(n => n.folder_id === folder.id)}
+							{@const folderNotes = filteredLinkNotes.filter(
+								(n) => n.folder_id === folder.id,
+							)}
 							{#if folderNotes.length > 0}
 								<div class="mb-4">
-									<h4 class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2 px-1">{folder.name}</h4>
+									<h4
+										class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2 px-1"
+									>
+										{folder.name}
+									</h4>
 									<div class="space-y-1">
 										{#each folderNotes as note}
-											<button class="w-full text-left p-2 rounded-lg bg-[#070b0e] hover:bg-brand-surface border border-brand-divider hover:border-brand-accent/50 transition-colors" onclick={() => linkNoteToTask(note)}>
-												<span class="text-sm font-bold text-brand-text block truncate">{note.title || 'Sin título'}</span>
+											<button
+												class="w-full text-left p-2 rounded-lg bg-[#070b0e] hover:bg-brand-surface border border-brand-divider hover:border-brand-accent/50 transition-colors"
+												onclick={() =>
+													linkNoteToTask(note)}
+											>
+												<span
+													class="text-sm font-bold text-brand-text block truncate"
+													>{note.title ||
+														"Sin título"}</span
+												>
 											</button>
 										{/each}
 									</div>
 								</div>
 							{/if}
 						{/each}
-						{@const unassignedNotes = filteredLinkNotes.filter(n => !n.folder_id)}
+						{@const unassignedNotes = filteredLinkNotes.filter(
+							(n) => !n.folder_id,
+						)}
 						{#if unassignedNotes.length > 0}
 							<div class="mb-4">
-								<h4 class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2 px-1">Sin Carpeta</h4>
+								<h4
+									class="text-[10px] font-bold text-brand-text-muted uppercase tracking-wider mb-2 px-1"
+								>
+									Sin Carpeta
+								</h4>
 								<div class="space-y-1">
 									{#each unassignedNotes as note}
-										<button class="w-full text-left p-2 rounded-lg bg-[#070b0e] hover:bg-brand-surface border border-brand-divider hover:border-brand-accent/50 transition-colors" onclick={() => linkNoteToTask(note)}>
-											<span class="text-sm font-bold text-brand-text block truncate">{note.title || 'Sin título'}</span>
+										<button
+											class="w-full text-left p-2 rounded-lg bg-[#070b0e] hover:bg-brand-surface border border-brand-divider hover:border-brand-accent/50 transition-colors"
+											onclick={() => linkNoteToTask(note)}
+										>
+											<span
+												class="text-sm font-bold text-brand-text block truncate"
+												>{note.title ||
+													"Sin título"}</span
+											>
 										</button>
 									{/each}
 								</div>
@@ -3036,22 +4467,35 @@
 
 <!-- Modal Confirmar Eliminación de Tarea -->
 {#if showDeleteTaskConfirm}
-	<div class="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
-			<div class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4">
+	<div
+		class="fixed inset-0 bg-black/80 z-60 flex items-center justify-center backdrop-blur-sm p-4"
+	>
+		<div
+			class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center"
+		>
+			<div
+				class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4"
+			>
 				<AlertTriangle class="w-6 h-6" />
 			</div>
-			<h3 class="text-lg font-bold text-brand-text mb-2">¿Eliminar Tarea?</h3>
-			<p class="text-sm text-brand-text-muted mb-6">Esta tarea será eliminada permanentemente y no podrá recuperarse.</p>
+			<h3 class="text-lg font-bold text-brand-text mb-2">
+				¿Eliminar Tarea?
+			</h3>
+			<p class="text-sm text-brand-text-muted mb-6">
+				Esta tarea será eliminada permanentemente y no podrá
+				recuperarse.
+			</p>
 			<div class="flex justify-center gap-3 w-full">
-				<button 
-					class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors" 
-					onclick={() => showDeleteTaskConfirm = false}>
+				<button
+					class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors"
+					onclick={() => (showDeleteTaskConfirm = false)}
+				>
 					Cancelar
 				</button>
-				<button 
-					class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]" 
-					onclick={confirmDeleteTask}>
+				<button
+					class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]"
+					onclick={confirmDeleteTask}
+				>
 					Eliminar
 				</button>
 			</div>
