@@ -38,3 +38,4 @@ create policy "Users can update own tags"
 create policy "Users can delete own tags"
   on public.tags for delete
   using (auth.uid() = user_id);
+  --ejemplo
