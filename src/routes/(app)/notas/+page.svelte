@@ -34,6 +34,8 @@
 		Menu,
 		Table,
 		ListOrdered,
+		Maximize,
+		Minimize,
 	} from "@lucide/svelte";
 	import { goto } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
@@ -54,6 +56,7 @@
 	// Mobile states
 	let showMobileList = $state(false);
 	let showMobileFolders = $state(false);
+	let isEditorExpanded = $state(false);
 
 	let activeFolderId = $state<string | null>(null);
 	let activeFolderName = $state<string>("Todas las Notas");
@@ -598,7 +601,7 @@
 >
 	<!-- Left Sidebar (Navegación) -->
 	<aside
-		class="w-64 shrink-0 bg-[#070b0e] border-r border-brand-divider flex-col h-full overflow-y-auto custom-scrollbar z-30 transition-transform duration-300 md:translate-x-0 md:flex {showMobileFolders
+		class="w-64 shrink-0 bg-[#070b0e] border-r border-brand-divider flex-col h-full overflow-y-auto custom-scrollbar z-30 transition-transform duration-300 {isEditorExpanded ? 'hidden' : 'md:translate-x-0 md:flex'} {showMobileFolders
 			? 'absolute inset-y-0 left-0 translate-x-0 shadow-2xl flex'
 			: 'absolute inset-y-0 left-0 -translate-x-full md:relative'}"
 	>
@@ -740,7 +743,7 @@
 
 	<!-- Middle Column (Lista de Notas) -->
 	<section
-		class="w-full md:w-96 shrink-0 bg-[#0d1216] border-r border-brand-divider flex-col h-full z-20 transition-transform duration-300 md:translate-x-0 md:flex shadow-xl {showMobileList
+		class="w-full md:w-96 shrink-0 bg-[#0d1216] border-r border-brand-divider flex-col h-full z-20 transition-transform duration-300 {isEditorExpanded ? 'hidden' : 'md:translate-x-0 md:flex'} shadow-xl {showMobileList
 			? 'absolute inset-y-0 left-0 translate-x-0 flex'
 			: 'absolute inset-y-0 left-0 -translate-x-full md:relative'}"
 	>
@@ -1109,6 +1112,18 @@
 					onclick={() => (showMobileList = true)}
 				>
 					<List class="w-4 h-4" />
+				</button>
+				
+				<button
+					class="hidden md:flex p-2 rounded-lg text-brand-text hover:bg-brand-surface border border-brand-divider transition-colors shadow-sm"
+					onclick={() => (isEditorExpanded = !isEditorExpanded)}
+					title={isEditorExpanded ? "Mostrar menús" : "Ocultar menús"}
+				>
+					{#if isEditorExpanded}
+						<Minimize class="w-4 h-4" />
+					{:else}
+						<Maximize class="w-4 h-4" />
+					{/if}
 				</button>
 
 				<div
