@@ -11,20 +11,25 @@
 	let loading = $state(true);
 
 	onMount(() => {
-		supabase?.auth
-			.getSession()
-			.then(({ data: { session: currentSession } }) => {
+		if (supabase) {
+			supabase.auth
+				.getSession()
+				.then(({ data: { session: currentSession } }) => {
+					session = currentSession;
+					loading = false;
+				});
+
+			const {
+				data: { subscription },
+			} = supabase.auth.onAuthStateChange((_event, currentSession) => {
 				session = currentSession;
-				loading = false;
 			});
 
-		const {
-			data: { subscription },
-		} = supabase?.auth.onAuthStateChange((_event, currentSession) => {
-			session = currentSession;
-		}) ?? { data: { subscription: { unsubscribe: () => {} } } };
-
-		return () => subscription.unsubscribe();
+			return () => subscription.unsubscribe();
+		} else {
+			loading = false;
+			console.warn("Supabase no está configurado (faltan variables de entorno).");
+		}
 	});
 
 	const signInWithGoogle = async () => {

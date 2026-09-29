@@ -214,16 +214,20 @@
 	}
 
 	$effect(() => {
+		// Leer incondicionalmente para asegurar que Svelte 5 rastree la dependencia
+		const currentNote = activeNote;
+		const currentExcerpt = currentNote?.excerpt;
+
 		// Sincronizar contenido cuando cambia activeNoteId
-		if (quillInstance && activeNote) {
-			if (quillInstance.root.innerHTML !== activeNote.excerpt) {
+		if (quillInstance && currentNote) {
+			if (quillInstance.root.innerHTML !== currentExcerpt) {
 				isQuillUpdating = true;
 				quillInstance.clipboard.dangerouslyPasteHTML(
-					activeNote.excerpt || "",
+					currentExcerpt || "",
 				);
 				isQuillUpdating = false;
 			}
-		} else if (quillInstance && !activeNote) {
+		} else if (quillInstance && !currentNote) {
 			isQuillUpdating = true;
 			quillInstance.setContents([]);
 			isQuillUpdating = false;
