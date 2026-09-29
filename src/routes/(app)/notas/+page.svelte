@@ -1196,10 +1196,11 @@
 			</div>
 		</header>
 
-		<!-- Editor Canvas -->
-		<div class="flex-1 overflow-y-auto custom-scrollbar">
+		<!-- Editor Canvas Container -->
+		<div class="flex-1 flex flex-col overflow-hidden">
 			{#if activeNote}
-				<div class="max-w-3xl mx-auto px-8 py-12 pb-32">
+				<!-- Header Fijo (Título, Meta, Toolbar) -->
+				<div class="shrink-0 max-w-3xl mx-auto w-full px-4 md:px-8 pt-6 md:pt-12 pb-2">
 					<!-- Titulo -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
@@ -1207,7 +1208,7 @@
 						role="textbox"
 						tabindex="0"
 						aria-label="Título de la nota"
-						class="text-4xl font-black text-brand-text tracking-tight mb-4 outline-none"
+						class="text-3xl md:text-4xl font-black text-brand-text tracking-tight mb-4 outline-none"
 						contenteditable="true"
 						spellcheck="false"
 						use:titleAction={activeNote.title}
@@ -1217,7 +1218,7 @@
 
 					<!-- Metadatos de la nota -->
 					<div
-						class="flex flex-wrap items-center gap-3 mb-8 text-[11px] font-bold"
+						class="flex flex-wrap items-center gap-3 mb-6 text-[11px] font-bold"
 					>
 						<div class="flex items-center gap-2 text-brand-accent">
 							<CalendarDays class="w-4 h-4" />
@@ -1228,7 +1229,7 @@
 					<!-- Toolbar Enriquecida -->
 					<div
 						id="toolbar-container"
-						class="flex flex-wrap items-center gap-1 p-1 bg-[#0d1216] border border-brand-divider rounded-xl mb-8 w-fit shadow-lg sticky top-0 z-10 backdrop-blur-md fokuz-quill-toolbar"
+						class="flex flex-wrap items-center gap-1 p-1 bg-[#0d1216] border border-brand-divider rounded-xl mb-2 w-fit shadow-lg backdrop-blur-md fokuz-quill-toolbar"
 					>
 						<div
 							class="flex items-center gap-1 pr-2 border-r border-brand-divider"
@@ -1379,12 +1380,17 @@
 							>
 						</div>
 					</div>
+				</div>
 
-					<!-- Contenido Enriquecido -->
-					<div
-						class="space-y-6 text-[15px] leading-relaxed text-brand-text"
-					>
-						<div use:quillAction class="min-h-[300px] pb-10"></div>
+				<!-- Área de contenido con scroll individual -->
+				<div class="flex-1 overflow-y-auto custom-scrollbar w-full">
+					<div class="max-w-3xl mx-auto px-4 md:px-8 pb-32">
+						<!-- Contenido Enriquecido -->
+						<div
+							class="space-y-6 text-[15px] leading-relaxed text-brand-text mt-4"
+						>
+							<div use:quillAction class="min-h-[300px] pb-10"></div>
+						</div>
 					</div>
 				</div>
 			{:else}
@@ -1912,6 +1918,24 @@
 		padding: 0.3rem 0.75rem !important;
 		transition: all 0.2s ease !important;
 		z-index: 10 !important;
+	}
+
+	/* Ocultar el ql-picker generado automáticamente por Quill, usar el select nativo */
+	:global(.ql-snow .ql-editor .ql-code-block-container .ql-picker) {
+		display: none !important;
+	}
+	
+	/* Asegurar que el select nativo sea visible */
+	:global(.ql-snow .ql-editor .ql-code-block-container select.ql-ui) {
+		display: block !important;
+		-webkit-appearance: none;
+		-moz-appearance: none;
+		appearance: none;
+		background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232CC295' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+		background-repeat: no-repeat;
+		background-position: right 0.5rem center;
+		background-size: 1em;
+		padding-right: 2rem !important;
 	}
 
 	:global(.ql-snow .ql-editor pre.ql-syntax .ql-ui:hover),
