@@ -191,12 +191,8 @@
 				if (isQuillUpdating || !activeNote) return;
 				const index = notes.findIndex((n) => n.id === activeNote.id);
 				if (index !== -1) {
-					// Evitar guardar elementos UI internos de Quill que luego se duplican como texto
-					const tempDiv = document.createElement("div");
-					tempDiv.innerHTML = quillInstance!.root.innerHTML;
-					tempDiv.querySelectorAll(".ql-ui").forEach((el) => el.remove());
-					tempDiv.querySelectorAll(".ql-picker").forEach((el) => el.remove());
-					notes[index].excerpt = tempDiv.innerHTML;
+					// Guardar exactamente el innerHTML para que el $effect no detecte cambios y resetee el cursor
+					notes[index].excerpt = quillInstance!.root.innerHTML;
 					scheduleAutoSave();
 				}
 			});
@@ -218,23 +214,27 @@
 		};
 	}
 
+	let lastLoadedNoteId = $state<string | null>(null);
+
 	$effect(() => {
 		// Leer incondicionalmente para asegurar que Svelte 5 rastree la dependencia
 		const currentNote = activeNote;
 		const currentExcerpt = currentNote?.excerpt;
 
-		// Sincronizar contenido cuando cambia activeNoteId
+		// Sincronizar contenido SOLO cuando cambia el activeNoteId
 		if (quillInstance && currentNote) {
-			if (quillInstance.root.innerHTML !== currentExcerpt) {
+			if (lastLoadedNoteId !== currentNote.id) {
 				isQuillUpdating = true;
 				// Limpiar cualquier basura previa guardada en la base de datos o estado
 				let cleanExcerpt = (currentExcerpt || "").replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
 				quillInstance.clipboard.dangerouslyPasteHTML(cleanExcerpt);
+				lastLoadedNoteId = currentNote.id;
 				isQuillUpdating = false;
 			}
 		} else if (quillInstance && !currentNote) {
 			isQuillUpdating = true;
 			quillInstance.setContents([]);
+			lastLoadedNoteId = null;
 			isQuillUpdating = false;
 		}
 	});
@@ -506,9 +506,16 @@
 			const newTitle = titleEl
 				? titleEl.textContent || "Sin título"
 				: activeNote.title;
-			const newExcerpt = excerptEl
+			let newExcerpt = excerptEl
 				? excerptEl.innerHTML || ""
 				: activeNote.excerpt;
+
+			// Limpiar elementos de UI internos de Quill antes de guardar en la DB
+			const tempDiv = document.createElement("div");
+			tempDiv.innerHTML = newExcerpt;
+			tempDiv.querySelectorAll(".ql-ui").forEach((el) => el.remove());
+			tempDiv.querySelectorAll(".ql-picker").forEach((el) => el.remove());
+			newExcerpt = tempDiv.innerHTML;
 
 			notes[index].title = newTitle;
 			notes[index].excerpt = newExcerpt;
