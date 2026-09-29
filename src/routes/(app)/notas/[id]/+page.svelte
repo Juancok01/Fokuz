@@ -435,13 +435,11 @@
 	:global(.ql-snow .ql-editor pre.ql-syntax),
 	:global(.ql-snow .ql-editor .ql-code-block-container) {
 		background-color: #090e11 !important; /* Más oscuro para resaltar */
-		color: #e4e4e7 !important;
+		color: transparent !important; /* Esconder texto huérfano */
+		font-size: 0 !important; /* Esconder texto huérfano */
 		padding: 3.5rem 1.5rem 1.5rem 1.5rem !important;
 		border-radius: 0.75rem !important;
 		border: 1px solid rgba(255, 255, 255, 0.05) !important;
-		font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace !important;
-		font-size: 0.85rem !important;
-		line-height: 1.6 !important;
 		position: relative !important;
 		margin-top: 1.5rem !important;
 		margin-bottom: 1.5rem !important;
@@ -449,13 +447,17 @@
 		overflow: visible !important;
 	}
 
+	/* Restaurar estilos solo para el bloque de código real dentro del contenedor */
+	:global(.ql-snow .ql-editor pre.ql-syntax),
 	:global(.ql-snow .ql-editor .ql-code-block-container .ql-code-block) {
 		background-color: transparent !important;
-		color: inherit !important;
+		color: #e4e4e7 !important;
+		font-size: 0.85rem !important;
+		line-height: 1.6 !important;
+		font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, Monaco, monospace !important;
 		padding: 0 !important;
 		border: none !important;
 		margin: 0 !important;
-		font-family: inherit !important;
 	}
 
 	/* Botones Mac en el bloque de código */
