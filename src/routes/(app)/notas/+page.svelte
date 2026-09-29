@@ -191,16 +191,21 @@
 				if (isQuillUpdating || !activeNote) return;
 				const index = notes.findIndex((n) => n.id === activeNote.id);
 				if (index !== -1) {
-					notes[index].excerpt = quillInstance!.root.innerHTML;
+					// Evitar guardar elementos UI internos de Quill que luego se duplican como texto
+					const tempDiv = document.createElement("div");
+					tempDiv.innerHTML = quillInstance!.root.innerHTML;
+					tempDiv.querySelectorAll(".ql-ui").forEach((el) => el.remove());
+					tempDiv.querySelectorAll(".ql-picker").forEach((el) => el.remove());
+					notes[index].excerpt = tempDiv.innerHTML;
 					scheduleAutoSave();
 				}
 			});
 
 			if (activeNote && activeNote.excerpt) {
 				isQuillUpdating = true;
-				quillInstance.clipboard.dangerouslyPasteHTML(
-					activeNote.excerpt,
-				);
+				// Limpiar cualquier basura previa guardada en la base de datos
+				let cleanExcerpt = activeNote.excerpt.replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
+				quillInstance.clipboard.dangerouslyPasteHTML(cleanExcerpt);
 				isQuillUpdating = false;
 			}
 		})();
@@ -222,9 +227,9 @@
 		if (quillInstance && currentNote) {
 			if (quillInstance.root.innerHTML !== currentExcerpt) {
 				isQuillUpdating = true;
-				quillInstance.clipboard.dangerouslyPasteHTML(
-					currentExcerpt || "",
-				);
+				// Limpiar cualquier basura previa guardada en la base de datos o estado
+				let cleanExcerpt = (currentExcerpt || "").replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
+				quillInstance.clipboard.dangerouslyPasteHTML(cleanExcerpt);
 				isQuillUpdating = false;
 			}
 		} else if (quillInstance && !currentNote) {

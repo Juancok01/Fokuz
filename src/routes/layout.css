@@ -173,11 +173,14 @@
   padding: 4px !important;
 }
 
-/* Ocultar el picker custom de Quill en el editor para evitar texto duplicado de opciones de lenguaje */
-.ql-snow .ql-editor .ql-picker,
-.ql-snow .ql-editor .ql-picker-options,
-.ql-snow .ql-editor .ql-picker-label,
-.ql-snow .ql-editor .ql-picker-item {
+/* Ocultar cualquier picker de Quill generado fuera de la barra de herramientas (como los adjuntados al body) */
+body > .ql-picker,
+.ql-editor .ql-picker,
+body > .ql-picker-options,
+.ql-editor .ql-picker-options,
+.ql-tooltip .ql-picker,
+.ql-code-block-container > .ql-picker,
+.ql-code-block-container > .ql-picker-options {
   display: none !important;
   opacity: 0 !important;
   visibility: hidden !important;
