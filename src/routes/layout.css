@@ -174,8 +174,14 @@
 }
 
 /* Ocultar el picker custom de Quill en el editor para evitar texto duplicado de opciones de lenguaje */
-.ql-snow .ql-editor .ql-picker {
+.ql-snow .ql-editor .ql-picker,
+.ql-snow .ql-editor .ql-picker-options,
+.ql-snow .ql-editor .ql-picker-label,
+.ql-snow .ql-editor .ql-picker-item {
   display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  font-size: 0 !important;
 }
 
 .ql-picker-item:hover,
