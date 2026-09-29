@@ -49,7 +49,7 @@
 </svelte:head>
 
 <main
-	class="w-full mx-auto min-h-screen bg-brand-bg relative overflow-hidden flex flex-col"
+	class="w-full mx-auto h-screen bg-brand-bg relative overflow-hidden flex flex-col"
 >
 	{#if loading}
 		<div
