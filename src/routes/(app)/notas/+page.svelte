@@ -1921,7 +1921,7 @@
 	}
 
 	/* Ocultar el ql-picker generado automáticamente por Quill, usar el select nativo */
-	:global(.ql-snow .ql-editor .ql-code-block-container .ql-picker) {
+	:global(.ql-snow .ql-editor .ql-picker) {
 		display: none !important;
 	}
 	
