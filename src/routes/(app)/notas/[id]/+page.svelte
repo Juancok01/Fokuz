@@ -168,8 +168,10 @@
 			icons['table-delete'] = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" opacity="0.3"/><path d="M8 8l8 8M16 8l-8 8"/></svg>';
 
 			if (note.content) {
-				// Limpiar cualquier basura previa guardada en la base de datos
-				let cleanExcerpt = note.content.replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
+				// Limpiar cualquier basura previa guardada en la base de datos, incluyendo selects que Quill convierte a texto
+				let cleanExcerpt = note.content
+					.replace(/<select\b[^>]*>[\s\S]*?<\/select>/gi, "")
+					.replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
 				node.innerHTML = cleanExcerpt;
 			}
 
@@ -205,9 +207,12 @@
 				// Evitar guardar elementos UI internos de Quill que luego se duplican como texto
 				const tempDiv = document.createElement("div");
 				tempDiv.innerHTML = quill.root.innerHTML;
-				tempDiv.querySelectorAll(".ql-ui").forEach((el) => el.remove());
-				tempDiv.querySelectorAll(".ql-picker").forEach((el) => el.remove());
-				note.content = tempDiv.innerHTML;
+				tempDiv.querySelectorAll(".ql-ui, .ql-picker, select").forEach((el) => el.remove());
+				
+				let html = tempDiv.innerHTML;
+				html = html.replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
+				
+				note.content = html;
 			});
 		})();
 
