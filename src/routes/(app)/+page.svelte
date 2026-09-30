@@ -33,6 +33,7 @@
 		normalizeWeekdays,
 		type Habit,
 	} from "$lib/habits";
+	import { addLocalDays } from "$lib/taskTime";
 
 	type TodayHabit = Habit & { done: boolean; streak: number; tag: string };
 
@@ -512,18 +513,19 @@
 
 				<div class="mt-8 flex flex-col sm:flex-row gap-3 relative z-10">
 					<a
-						href="/tareas"
+						href="/tareas/hoy"
 						class="flex-1 flex items-center justify-center gap-2 bg-brand-accent text-brand-bg font-bold py-3.5 rounded-xl hover:brightness-105 transition-colors shadow-[0_0_20px_var(--color-brand-accent-muted)]"
 					>
 						<ListChecks class="w-5 h-5" />
 						Ver tareas de hoy
 					</a>
-					<button
+					<a
+						href="/tareas/hoy?fecha={addLocalDays(formatDateInTz(), 1)}"
 						class="flex-[0.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3.5 rounded-xl hover:bg-brand-bg transition-colors"
 					>
 						<span class="text-brand-text-muted">+</span> Planificar día
 						siguiente
-					</button>
+					</a>
 				</div>
 			</div>
 
