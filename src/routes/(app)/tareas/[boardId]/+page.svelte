@@ -50,6 +50,16 @@
 	import DateTimePicker from "$lib/components/DateTimePicker.svelte";
 	import RichTextEditor from "$lib/components/RichTextEditor.svelte";
 	import { linkPomodoroTask, pomodoroUI } from "$lib/pomodoro.svelte";
+	import {
+		composeDateTime,
+		defaultEndTime,
+		findOverlappingTasks,
+		localDayString,
+		overlapMessage,
+		splitDateTime,
+		START_TIME_SQL_HINT,
+		taskRangeLabel,
+	} from "$lib/taskTime";
 
 	type TaskTag = { id: number; name: string; color: string };
 	type Contact = {
@@ -109,7 +119,8 @@
 			});
 		}
 
-		const endPadding = 42 - days.length;
+		const remainder = days.length % 7;
+		const endPadding = remainder === 0 ? 0 : 7 - remainder;
 		for (let i = 1; i <= endPadding; i++) {
 			const d = new Date(year, month + 1, i);
 			days.push({ date: d, currentMonth: false });
@@ -249,7 +260,7 @@
 	let editListItemId = $state<number | null>(null);
 	let editListItemTitle = $state("");
 	let newTaskTitle = $state("");
-	let newTaskStartDate = $state(new Date().toISOString().split("T")[0]);
+	let newTaskStartDate = $state(composeDateTime(localDayString()));
 	let newTaskEndDate = $state("");
 	let newTaskSharedWith = $state<string[]>([]);
 	let selectedTagId = $state<number | null>(null);
@@ -954,10 +965,42 @@
 		showNewTask = true;
 	};
 
+	async function getTimedTasksForDay(day: string) {
+		if (!supabase) return [];
+		const { data } = await supabase
+			.from("tasks")
+			.select("id, title, date, end_date, start_time, end_time");
+		return (data ?? []).filter(
+			(task) => (task.date || task.end_date || "").substring(0, 10) === day,
+		);
+	}
+
 	const addTask = async () => {
 		if (!newTaskTitle.trim()) return;
 
 		const tag = tags.find((t) => t.id === selectedTagId) ?? null;
+		const start = splitDateTime(newTaskStartDate);
+		const end = splitDateTime(newTaskEndDate);
+		const date = start.date || localDayString();
+		const startTime = start.time || "09:00";
+		const endTime = defaultEndTime(startTime, end.time);
+
+		if (supabase) {
+			const dayTasks = await getTimedTasksForDay(date);
+			const conflicts = findOverlappingTasks(
+				dayTasks,
+				date,
+				startTime,
+				endTime,
+			);
+			if (conflicts.length) {
+				alert(
+					overlapMessage(conflicts) + " Elige otro horario para crearla.",
+				);
+				return;
+			}
+		}
+
 		const payload = {
 			title: newTaskTitle.trim(),
 			is_completed: false,
@@ -965,7 +1008,9 @@
 			status: "backlog",
 			order_index: tasks.length,
 			novedad: "",
-			date: newTaskStartDate,
+			date,
+			start_time: startTime,
+			end_time: endTime,
 			end_date: newTaskEndDate || null,
 			tag_id: selectedTagId,
 		};
@@ -987,7 +1032,7 @@
 
 		newTaskTitle = "";
 		selectedTagId = null;
-		newTaskStartDate = new Date().toISOString().split("T")[0];
+		newTaskStartDate = composeDateTime(localDayString());
 		newTaskEndDate = "";
 		newTaskSharedWith = [];
 		showNewTask = false;
@@ -1001,7 +1046,11 @@
 
 		if (error) {
 			tasks = tasks.filter((t) => t.id !== tempId);
-			alert("Error al crear tarea: " + error.message);
+			const missingTime = /start_time|end_time/i.test(error.message);
+			alert(
+				"Error al crear tarea: " +
+					(missingTime ? START_TIME_SQL_HINT : error.message),
+			);
 			return;
 		}
 
@@ -1311,22 +1360,18 @@
 				if (data) selectedTaskLinkedNoteTitle = data.title;
 			}
 
-			editingDate = "";
-			if (task.date) {
-				try {
-					editingDate = new Date(task.date)
-						.toISOString()
-						.slice(0, 16);
-				} catch (e) {}
-			}
+			editingDate = task.date
+				? composeDateTime(task.date, task.start_time)
+				: "";
 
 			editingEndDate = "";
 			if (task.end_date) {
-				try {
-					editingEndDate = new Date(task.end_date)
-						.toISOString()
-						.slice(0, 16);
-				} catch (e) {}
+				editingEndDate = composeDateTime(
+					task.end_date,
+					task.end_time || splitDateTime(task.end_date).time || "23:59",
+				);
+			} else if (task.end_time && task.date) {
+				editingEndDate = composeDateTime(task.date, task.end_time);
 			}
 			editingTagId = task.tag_id ?? getTaskTag(task)?.id ?? null;
 			closeListModals();
@@ -1654,16 +1699,42 @@
 			novedad: tasks[taskIndex].novedad,
 			description: tasks[taskIndex].description,
 			date: tasks[taskIndex].date,
+			start_time: tasks[taskIndex].start_time,
+			end_time: tasks[taskIndex].end_time,
 			end_date: tasks[taskIndex].end_date,
 		};
 		const nextTag = tags.find((t) => t.id === editingTagId) ?? null;
+
+		const start = splitDateTime(editingDate);
+		const end = splitDateTime(editingEndDate);
+		const date = start.date || editingDate || null;
+		const startTime = start.time || "09:00";
+		const endTime = defaultEndTime(startTime, end.time);
+
+		if (date && supabase) {
+			const dayTasks = await getTimedTasksForDay(date);
+			const conflicts = findOverlappingTasks(
+				dayTasks,
+				date,
+				startTime,
+				endTime,
+				selectedTaskId,
+			);
+			if (conflicts.length) {
+				taskActionError =
+					overlapMessage(conflicts) + " Elige otro horario.";
+				return;
+			}
+		}
 
 		tasks[taskIndex].title = title;
 		tasks[taskIndex].tag_id = editingTagId;
 		tasks[taskIndex].tags = nextTag;
 		tasks[taskIndex].novedad = editingNovedad;
 		tasks[taskIndex].description = editingDescription;
-		tasks[taskIndex].date = editingDate || null;
+		tasks[taskIndex].date = date;
+		tasks[taskIndex].start_time = startTime;
+		tasks[taskIndex].end_time = endTime;
 		tasks[taskIndex].end_date = editingEndDate || null;
 		selectedTaskTitle = title;
 		taskActionError = "";
@@ -1676,7 +1747,9 @@
 					tag_id: editingTagId,
 					novedad: editingNovedad,
 					description: editingDescription,
-					date: editingDate || null,
+					date,
+					start_time: startTime,
+					end_time: endTime,
 					end_date: editingEndDate || null,
 				})
 				.eq("id", selectedTaskId);
@@ -1687,9 +1760,13 @@
 				tasks[taskIndex].novedad = previous.novedad;
 				tasks[taskIndex].description = previous.description;
 				tasks[taskIndex].date = previous.date;
+				tasks[taskIndex].start_time = previous.start_time;
+				tasks[taskIndex].end_time = previous.end_time;
 				tasks[taskIndex].end_date = previous.end_date;
 				selectedTaskTitle = previous.title;
-				taskActionError = error.message;
+				taskActionError = /start_time|end_time/i.test(error.message)
+					? START_TIME_SQL_HINT
+					: error.message;
 				return;
 			}
 		}
@@ -2512,6 +2589,11 @@
 											{task.title}
 										</h4>
 									</div>
+									{#if taskRangeLabel(task)}
+										<p class="text-[10px] font-black text-brand-accent tabular-nums mb-2 pl-6">
+											{taskRangeLabel(task)}
+										</p>
+									{/if}
 
 									<!-- Description -->
 									{#if task.description}
@@ -2684,12 +2766,12 @@
 	{:else if viewMode === "calendario"}
 		<!-- Calendar View -->
 		<div
-			class="flex-1 overflow-y-auto custom-scrollbar p-2 md:p-6 bg-[#070b0e]"
+			class="flex-1 min-h-0 overflow-hidden p-2 md:p-6 bg-[#070b0e] flex flex-col"
 		>
-			<div class="max-w-6xl mx-auto h-full flex flex-col">
+			<div class="max-w-6xl mx-auto w-full h-full min-h-0 flex flex-col">
 				<!-- Cabecera Mes -->
 				<div
-					class="flex items-center justify-between mb-4 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm"
+					class="flex items-center justify-between mb-3 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm shrink-0"
 				>
 					<h2
 						class="text-lg font-bold text-brand-text px-3 capitalize"
@@ -2723,37 +2805,39 @@
 
 				<!-- Grid Calendario -->
 				<div
-					class="flex-1 bg-[#0d1216] border border-brand-divider rounded-2xl overflow-hidden flex flex-col shadow-lg"
+					class="flex-1 min-h-0 bg-[#0d1216] border border-brand-divider rounded-2xl overflow-hidden flex flex-col shadow-lg"
 				>
-					<!-- Cabecera Días -->
 					<div
-						class="grid grid-cols-7 border-b border-brand-divider bg-brand-surface"
+						class="grid grid-cols-7 border-b border-brand-divider bg-brand-surface shrink-0"
 					>
 						{#each ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"] as day}
 							<div
-								class="py-3 text-center text-xs font-bold text-brand-text-muted uppercase tracking-wider"
+								class="py-2.5 text-center text-xs font-bold text-brand-text-muted uppercase tracking-wider"
 							>
 								{day}
 							</div>
 						{/each}
 					</div>
 
-					<!-- Celdas -->
-					<div class="grid grid-cols-7 flex-1 auto-rows-fr">
+					<div
+						class="grid grid-cols-7 flex-1 min-h-0"
+						style="grid-template-rows: repeat({boardCalendarDays.length / 7}, minmax(0, 1fr))"
+					>
 						{#each boardCalendarDays as day, i}
+							{@const lastRow = i >= boardCalendarDays.length - 7}
 							<div
-								class="min-h-30 p-2 border-r border-b border-brand-divider/50 {i %
+								class="min-h-0 h-full flex flex-col p-1.5 md:p-2 border-r border-b border-brand-divider/50 {i %
 									7 ===
 								6
 									? 'border-r-0'
-									: ''} {i >= 35
+									: ''} {lastRow
 									? 'border-b-0'
 									: ''} {!day.currentMonth
 									? 'bg-[#070b0e] opacity-50'
 									: 'bg-[#0d1216]'} relative group transition-colors hover:bg-brand-surface-elevated/30"
 							>
 								<div
-									class="flex justify-between items-start mb-2"
+									class="flex justify-between items-start mb-1 shrink-0"
 								>
 									<span
 										class="w-7 h-7 flex items-center justify-center rounded-full text-sm font-semibold {day.isToday
@@ -2762,18 +2846,12 @@
 									>
 										{day.date.getDate()}
 									</span>
-									<!-- Botón añadir rápido -->
 									<button
 										class="w-6 h-6 rounded-md hover:bg-brand-surface-elevated text-brand-text-muted opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"
 										onclick={() => {
-											// Configurar el modal para este día
-											newTaskStartDate = new Date(
-												day.date.getTime() -
-													day.date.getTimezoneOffset() *
-														60000,
-											)
-												.toISOString()
-												.split("T")[0];
+											newTaskStartDate = composeDateTime(
+												localDayString(day.date),
+											);
 											showNewTask = true;
 										}}
 									>
@@ -2781,9 +2859,8 @@
 									</button>
 								</div>
 
-								<!-- Tareas del día -->
 								<div
-									class="space-y-1.5 h-20 overflow-y-auto custom-scrollbar pr-1"
+									class="flex-1 min-h-0 space-y-1 overflow-y-auto custom-scrollbar pr-0.5"
 								>
 									{#each getTasksForCalendarDate(day.date) as task}
 										{@const dStyles = getDeadlineStyles(
@@ -2792,7 +2869,7 @@
 										<!-- svelte-ignore a11y_click_events_have_key_events -->
 										<!-- svelte-ignore a11y_no_static_element_interactions -->
 										<div
-											class="px-2 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1.5 truncate border cursor-pointer hover:brightness-110 transition-all {task.is_completed
+											class="px-2 py-1 rounded-md text-[10px] font-semibold flex items-center gap-1.5 truncate border cursor-pointer hover:brightness-110 transition-all {task.is_completed
 												? 'bg-brand-surface/50 border-brand-divider text-brand-text-muted line-through'
 												: `bg-brand-surface-elevated ${dStyles.border} text-brand-text shadow-sm`}"
 											title={task.title}
