@@ -41,6 +41,12 @@
 	import { supabase } from "$lib/supabaseClient";
 	import { onMount, onDestroy } from "svelte";
 	import { pomodoroUI } from '$lib/pomodoro.svelte';
+	import {
+		getCleanQuillHtml,
+		guardQuillCodeBlocks,
+		loadNoteHtml,
+		sanitizeNoteHtml,
+	} from "$lib/quill-note-html";
 
 	// Quill (imported dynamically to avoid SSR errors)
 	import type Quill from "quill";
@@ -187,21 +193,20 @@
 				theme: "snow",
 			});
 
+			guardQuillCodeBlocks(quillInstance);
+
 			quillInstance.on("text-change", () => {
 				if (isQuillUpdating || !activeNote) return;
 				const index = notes.findIndex((n) => n.id === activeNote.id);
 				if (index !== -1) {
-					// Guardar exactamente el innerHTML para que el $effect no detecte cambios y resetee el cursor
-					notes[index].excerpt = quillInstance!.root.innerHTML;
+					notes[index].excerpt = getCleanQuillHtml(quillInstance!);
 					scheduleAutoSave();
 				}
 			});
 
 			if (activeNote && activeNote.excerpt) {
 				isQuillUpdating = true;
-				// Limpiar cualquier basura previa guardada en la base de datos
-				let cleanExcerpt = activeNote.excerpt.replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
-				quillInstance.clipboard.dangerouslyPasteHTML(cleanExcerpt);
+				loadNoteHtml(quillInstance, activeNote.excerpt);
 				isQuillUpdating = false;
 			}
 		})();
@@ -225,9 +230,7 @@
 		if (quillInstance && currentNote) {
 			if (lastLoadedNoteId !== currentNote.id) {
 				isQuillUpdating = true;
-				// Limpiar cualquier basura previa guardada en la base de datos o estado
-				let cleanExcerpt = (currentExcerpt || "").replace(/PlainBashC\+\+C#CSSDiffHTML\/XMLJavaJavaScriptMarkdownPHPPythonRubySQL/g, "");
-				quillInstance.clipboard.dangerouslyPasteHTML(cleanExcerpt);
+				loadNoteHtml(quillInstance, currentExcerpt || "");
 				lastLoadedNoteId = currentNote.id;
 				isQuillUpdating = false;
 			}
@@ -343,7 +346,7 @@
 
 				return {
 					...n,
-					excerpt: n.content || "",
+					excerpt: sanitizeNoteHtml(n.content || ""),
 					last_edited_at: new Date(n.updated_at).getTime(),
 					date: new Date(n.created_at).toLocaleDateString("es-ES", {
 						day: "numeric",
@@ -499,23 +502,15 @@
 		if (!activeNote || !supabase) return;
 
 		const titleEl = document.getElementById("editor-title");
-		const excerptEl = document.getElementById("editor-excerpt");
 
 		const index = notes.findIndex((n) => n.id === activeNote.id);
 		if (index !== -1) {
 			const newTitle = titleEl
 				? titleEl.textContent || "Sin título"
 				: activeNote.title;
-			let newExcerpt = excerptEl
-				? excerptEl.innerHTML || ""
-				: activeNote.excerpt;
-
-			// Limpiar elementos de UI internos de Quill antes de guardar en la DB
-			const tempDiv = document.createElement("div");
-			tempDiv.innerHTML = newExcerpt;
-			tempDiv.querySelectorAll(".ql-ui").forEach((el) => el.remove());
-			tempDiv.querySelectorAll(".ql-picker").forEach((el) => el.remove());
-			newExcerpt = tempDiv.innerHTML;
+			const newExcerpt = quillInstance
+				? getCleanQuillHtml(quillInstance)
+				: sanitizeNoteHtml(activeNote.excerpt || "");
 
 			notes[index].title = newTitle;
 			notes[index].excerpt = newExcerpt;
