@@ -16,7 +16,8 @@
 		nextFreeSlot,
 		durationLabel,
 		START_TIME_SQL_HINT,
-		DEFAULT_DURATION_MIN
+		DEFAULT_DURATION_MIN,
+		addLocalDays
 	} from '$lib/taskTime';
 
 	type Task = {
@@ -67,20 +68,21 @@
 		return todayStr;
 	});
 	const isToday = $derived(selectedDateStr === todayStr);
-	const fromCalendar = $derived(Boolean(page.url.searchParams.get('fecha')));
+	const isTomorrow = $derived(selectedDateStr === addLocalDays(todayStr, 1));
 	const selectedDate = $derived.by(() => {
 		const [y, m, d] = selectedDateStr.split('-').map(Number);
 		return new Date(y, m - 1, d);
 	});
-	const dayTitle = $derived(
-		isToday
-			? 'Tareas para Hoy'
-			: `Tareas del ${selectedDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}`
+	const dateLabel = $derived.by(() => {
+		const raw = selectedDate.toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
+		return raw.replace(/de ([a-záéíóúüñ])/, (_, letter: string) => `de ${letter.toUpperCase()}`);
+	});
+	const weekdayLabel = $derived(
+		selectedDate.toLocaleDateString('es-CO', { weekday: 'long' })
 	);
+	const dayTitle = $derived(isToday ? 'Hoy' : isTomorrow ? 'Mañana' : dateLabel);
 	const daySubtitle = $derived(
-		isToday
-			? 'Todas tus tareas de todos los tableros que vencen el día de hoy'
-			: selectedDate.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+		isToday || isTomorrow ? dateLabel : weekdayLabel
 	);
 
 	let dayTasks = $derived.by(() => {
@@ -125,7 +127,16 @@
 	}
 
 	function goBack() {
-		goto(fromCalendar ? '/tareas/calendario' : '/tareas');
+		const origen = page.url.searchParams.get('origen');
+		if (origen === 'calendario') {
+			goto('/tareas/calendario');
+			return;
+		}
+		if (origen === 'tableros') {
+			goto('/tareas');
+			return;
+		}
+		goto('/');
 	}
 
 	function openNewTask() {
@@ -318,8 +329,8 @@
 				<ArrowLeft class="w-5 h-5" />
 			</button>
 			<div class="min-w-0">
-				<h1 class="text-2xl font-bold text-brand-text truncate">{dayTitle}</h1>
-				<p class="text-sm text-brand-text-muted mt-1 capitalize">{daySubtitle}</p>
+				<h1 class="text-2xl font-bold text-brand-text">{dayTitle}</h1>
+				<p class="text-sm text-brand-text-muted mt-1">{daySubtitle}</p>
 			</div>
 		</div>
 		<button

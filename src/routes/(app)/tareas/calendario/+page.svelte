@@ -64,7 +64,7 @@
 	function prevCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() - 1, 1); }
 
 	function openDay(day: Date) {
-		goto(`/tareas/hoy?fecha=${toLocalDateStr(day)}`);
+		goto(`/tareas/hoy?fecha=${toLocalDateStr(day)}&origen=calendario`);
 	}
 
 	async function loadAllTasks() {

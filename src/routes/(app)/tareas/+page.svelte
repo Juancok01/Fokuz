@@ -215,7 +215,7 @@
 				<Calendar class="w-5 h-5" />
 			</button>
 			<button
-				onclick={() => goto('/tareas/hoy')}
+				onclick={() => goto('/tareas/hoy?origen=tableros')}
 				class="flex items-center gap-2 p-2 rounded-lg border border-brand-divider text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors"
 				aria-label="Tareas de Hoy"
 				title="Tareas de Hoy"

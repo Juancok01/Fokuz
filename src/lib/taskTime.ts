@@ -4,6 +4,11 @@ export function localDayString(d = new Date()): string {
 	return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
+export function addLocalDays(day: string, days: number): string {
+	const [year, month, date] = day.split('-').map(Number);
+	return localDayString(new Date(year, month - 1, date + days));
+}
+
 export function extractTime(value?: string | null): string | null {
 	if (!value) return null;
 	const match = String(value).match(/(\d{2}:\d{2})/);
