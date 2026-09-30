@@ -1,270 +1,207 @@
 <script lang="ts">
-	import { Plus, Trash2, Edit2, Columns, AlertTriangle, LineChart } from '@lucide/svelte';
-	import { goto } from '$app/navigation';
-	import { supabase } from '$lib/supabaseClient';
-	import { onMount } from 'svelte';
+	import { ChevronLeft, ChevronRight, Plus } from '@lucide/svelte';
+	import Dashboard from '$lib/components/finanzas/Dashboard.svelte';
+	import Pockets from '$lib/components/finanzas/Pockets.svelte';
+	import Savings from '$lib/components/finanzas/Savings.svelte';
+	import Loans from '$lib/components/finanzas/Loans.svelte';
+	import FinanceTabs from '$lib/components/finanzas/BottomNav.svelte';
+	import TransactionModal from '$lib/components/finanzas/TransactionModal.svelte';
+	import Donut from '$lib/components/finanzas/Donut.svelte';
+	import { financeSummary, financeUI, openFinanceModal, shiftMonth } from '$lib/finanzas.svelte';
+	import { MONTHS_ES, clampPct, formatCOP, pct, type SourceFilter } from '$lib/finanzas';
 
-	type FinanceBoard = {
-		id: number;
-		title: string;
-		description: string;
-		created_at: string;
-	};
+	const summary = $derived(financeSummary());
+	const needPct = $derived(pct(summary.need, summary.totalSpent));
+	const wantPct = $derived(pct(summary.want, summary.totalSpent));
+	const spentRing = $derived(clampPct(summary.spentPct));
+	const savedRing = $derived(clampPct(pct(summary.savings, 44_000_000)));
+	const monthLabel = $derived(`${MONTHS_ES[financeUI.month]} ${financeUI.year}`);
 
-	let boards = $state<FinanceBoard[]>([]);
-	let loading = $state(true);
-	let showModal = $state(false);
-	let editBoardId = $state<number | null>(null);
-	
-	let boardTitle = $state('');
-	let boardDescription = $state('');
-
-	async function fetchBoards() {
-		loading = true;
-		if (!supabase) return;
-		
-		const { data, error } = await supabase
-			.from('finance_boards')
-			.select('*')
-			.order('created_at', { ascending: true });
-			
-		if (error) {
-			console.error('Error fetching finance boards:', error);
-		} else {
-			boards = data || [];
-		}
-		loading = false;
-	}
-
-	onMount(() => {
-		fetchBoards();
-	});
-
-	function openCreateModal() {
-		boardTitle = '';
-		boardDescription = '';
-		editBoardId = null;
-		showModal = true;
-	}
-
-	function openEditModal(board: FinanceBoard) {
-		boardTitle = board.title;
-		boardDescription = board.description || '';
-		editBoardId = board.id;
-		showModal = true;
-	}
-
-	async function saveBoard() {
-		if (!boardTitle.trim()) return;
-		if (!supabase) return;
-
-		const { data: { session } } = await supabase.auth.getSession();
-		if (!session) return;
-
-		if (editBoardId) {
-			// Update
-			const { error } = await supabase
-				.from('finance_boards')
-				.update({ title: boardTitle.trim(), description: boardDescription.trim() })
-				.eq('id', editBoardId);
-				
-			if (error) {
-				alert('Error al actualizar tablero: ' + error.message);
-			} else {
-				fetchBoards();
-				showModal = false;
-			}
-		} else {
-			// Create
-			const { error } = await supabase
-				.from('finance_boards')
-				.insert([{ title: boardTitle.trim(), description: boardDescription.trim(), user_id: session.user.id }]);
-				
-			if (error) {
-				alert('Error al crear tablero: ' + error.message);
-			} else {
-				fetchBoards();
-				showModal = false;
-			}
-		}
-	}
-
-	let boardToDelete = $state<number | null>(null);
-
-	function requestDeleteBoard(id: number) {
-		boardToDelete = id;
-	}
-
-	async function confirmDeleteBoard() {
-		if (boardToDelete === null) return;
-		const id = boardToDelete;
-		boardToDelete = null;
-
-		if (!supabase) return;
-		const { error } = await supabase.from('finance_boards').delete().eq('id', id);
-		if (error) {
-			alert('Error al eliminar: ' + error.message);
-		} else {
-			fetchBoards();
-		}
-	}
-
-	function goToBoard(id: number) {
-		goto(`/finanzas/${id}`);
-	}
+	const filters: { id: SourceFilter; label: string }[] = [
+		{ id: 'all', label: 'Todos' },
+		{ id: 'Juan', label: 'Solo Juan' },
+		{ id: 'Pao', label: 'Solo Paola' }
+	];
 </script>
 
 <svelte:head>
-	<title>Mis Finanzas · Fokuz</title>
+	<title>Finanzas · Fokuz</title>
 </svelte:head>
 
-<div class="flex-1 flex flex-col h-full bg-[#070b0e] overflow-hidden p-4 md:p-6">
-	<header class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 md:mb-8">
-		<div>
-			<h1 class="text-2xl font-bold text-brand-text mb-1">Tableros de Finanzas</h1>
-			<p class="text-sm text-brand-text-muted">Gestiona tus presupuestos, ingresos y gastos</p>
+<div class="flex-1 overflow-y-auto px-4 py-5 md:px-6 pb-28 lg:pb-8">
+	<header class="flex items-center justify-between mb-5">
+		<button
+			type="button"
+			onclick={() => shiftMonth(-1)}
+			class="p-2 rounded-full text-brand-text-muted hover:text-brand-text hover:bg-white/5"
+			aria-label="Mes anterior"
+		>
+			<ChevronLeft class="w-5 h-5" />
+		</button>
+		<div class="text-center">
+			<p class="text-[10px] font-bold uppercase tracking-[0.25em] text-brand-text-muted">Presupuesto base cero</p>
+			<h1 class="text-xl font-black text-brand-text">{monthLabel}</h1>
 		</div>
-		<div class="flex flex-wrap items-center gap-2 md:gap-3">
-			<button 
-				onclick={openCreateModal}
-				class="flex items-center gap-2 px-4 py-2 rounded-lg text-brand-bg bg-brand-accent hover:brightness-105 shadow-[0_0_10px_var(--color-brand-accent-muted)] font-bold transition-all"
-			>
-				<Plus class="w-5 h-5" /> Nuevo Tablero
-			</button>
-		</div>
+		<button
+			type="button"
+			onclick={() => shiftMonth(1)}
+			class="p-2 rounded-full text-brand-text-muted hover:text-brand-text hover:bg-white/5"
+			aria-label="Mes siguiente"
+		>
+			<ChevronRight class="w-5 h-5" />
+		</button>
 	</header>
 
-	{#if loading}
-		<div class="flex-1 flex items-center justify-center">
-			<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-accent"></div>
+	<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+		<article class="bg-[#0d1216] border border-brand-divider rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
+			<div class="min-w-0">
+				<p class="text-[9px] font-bold uppercase tracking-[0.18em] text-brand-text-muted">Diferencia operativa neta</p>
+				<p class="text-2xl font-black text-brand-text tabular-nums mt-2 leading-none">{formatCOP(summary.net)}</p>
+				<p class="text-[10px] font-bold text-brand-accent mt-2">+93.06% vs mes anterior</p>
+			</div>
+			<Donut value={82} />
+		</article>
+		<article class="bg-[#0d1216] border border-brand-divider rounded-2xl p-4 shadow-sm">
+			<p class="text-[9px] font-bold uppercase tracking-[0.18em] text-brand-text-muted">Ingresos totales</p>
+			<p class="text-2xl font-black text-brand-text tabular-nums mt-2 leading-none">{formatCOP(summary.totalIncome)}</p>
+			<p class="text-[10px] text-brand-text-muted mt-2">{summary.incomeCount} partidas</p>
+		</article>
+		<article class="bg-[#0d1216] border border-brand-divider rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
+			<div>
+				<p class="text-[9px] font-bold uppercase tracking-[0.18em] text-brand-text-muted">Total gastado</p>
+				<p class="text-2xl font-black text-brand-text tabular-nums mt-2 leading-none">{formatCOP(summary.totalSpent)}</p>
+				<p class="text-[10px] text-brand-text-muted mt-2">{spentRing.toFixed(1)}% del ingreso</p>
+			</div>
+			<Donut value={spentRing} tone="rose" />
+		</article>
+		<article class="bg-[#0d1216] border border-brand-divider rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
+			<div>
+				<p class="text-[9px] font-bold uppercase tracking-[0.18em] text-brand-text-muted">Ahorrado e invertido</p>
+				<p class="text-2xl font-black text-brand-text tabular-nums mt-2 leading-none">{formatCOP(summary.savings)}</p>
+				<p class="text-[10px] text-brand-text-muted mt-2">{savedRing.toFixed(0)}% meta</p>
+			</div>
+			<Donut value={savedRing} />
+		</article>
+	</div>
+
+	<section class="bg-[#0d1216] border border-brand-divider rounded-2xl px-4 py-3 mb-4 shadow-sm">
+		<div class="flex flex-col md:flex-row md:items-center gap-3">
+			<p class="text-[9px] font-bold uppercase tracking-[0.18em] text-brand-text-muted shrink-0">Distribución de flujo</p>
+			<div class="flex-1 h-1.5 rounded-full overflow-hidden bg-[#070b0e] flex">
+				<div class="h-full bg-rose-400/80" style="width: {clampPct(summary.spentPct)}%"></div>
+				<div class="h-full bg-brand-accent" style="width: {Math.min(48, 100 - clampPct(summary.spentPct))}%"></div>
+			</div>
 		</div>
-	{:else if boards.length === 0}
-		<div class="flex-1 flex flex-col items-center justify-center text-brand-text-muted">
-			<LineChart class="w-16 h-16 mb-4 opacity-50" />
-			<h2 class="text-xl font-semibold mb-2 text-brand-text">Aún no tienes tableros financieros</h2>
-			<p class="mb-6 max-w-md text-center">Crea tu primer tablero para llevar el control de tus ingresos, gastos y presupuestos mensuales.</p>
-			<button 
-				onclick={openCreateModal}
-				class="flex items-center gap-2 px-6 py-3 rounded-lg text-brand-bg bg-brand-accent font-bold transition-all"
-			>
-				<Plus class="w-5 h-5" /> Crear mi primer tablero
+		<div class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] font-bold text-brand-text-muted">
+			<span>Gasto {summary.spentPct.toFixed(2)}%</span>
+			<span>Ahorro ~48%</span>
+			<span>{summary.incomeCount} fuentes · 100% recaudado</span>
+			<span>{summary.spentPct.toFixed(2)}% tasa mensual</span>
+			<span class="text-brand-accent">Bajo control</span>
+			<span>Skandia {savedRing.toFixed(0)}% meta</span>
+		</div>
+	</section>
+
+	<div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="text-[9px] font-bold uppercase tracking-[0.18em] text-brand-text-muted mr-1">Acciones rápidas</span>
+			<button type="button" onclick={() => openFinanceModal('expense')} class="px-3 py-1.5 rounded-full text-[11px] font-bold text-brand-accent hover:bg-brand-accent/10">
+				+ Nuevo gasto
+			</button>
+			<button type="button" onclick={() => openFinanceModal('saving')} class="px-3 py-1.5 rounded-full text-[11px] font-bold text-brand-accent hover:bg-brand-accent/10">
+				+ Aporte ahorro
+			</button>
+			<button type="button" onclick={() => openFinanceModal('loan')} class="px-3 py-1.5 rounded-full text-[11px] font-bold text-brand-accent hover:bg-brand-accent/10">
+				+ Registrar préstamo
 			</button>
 		</div>
-	{:else}
-		<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 overflow-y-auto pb-8">
-			{#each boards as board}
-				<div 
-					class="bg-brand-surface border border-brand-divider rounded-xl p-5 hover:border-brand-accent/50 transition-all group relative cursor-pointer shadow-lg hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]"
-					onclick={() => goToBoard(board.id)}
+		<div class="flex items-center gap-1 bg-[#0d1216] border border-brand-divider rounded-full p-1 self-start">
+			{#each filters as filter}
+				<button
+					type="button"
+					onclick={() => (financeUI.sourceFilter = filter.id)}
+					class="px-3 py-1.5 rounded-full text-[10px] font-bold transition-colors {financeUI.sourceFilter === filter.id
+						? 'bg-brand-accent text-brand-bg'
+						: 'text-brand-text-muted hover:text-brand-text'}"
 				>
-					<div class="flex items-start justify-between mb-2">
-						<div class="flex items-center gap-3">
-							<div class="w-10 h-10 rounded-lg bg-brand-accent/10 flex items-center justify-center text-brand-accent shrink-0">
-								<LineChart class="w-5 h-5" />
-							</div>
-							<div>
-								<h3 class="font-bold text-lg text-brand-text group-hover:text-brand-accent transition-colors">{board.title}</h3>
-								<p class="text-xs text-brand-text-muted line-clamp-1">{board.description || 'Sin descripción'}</p>
-							</div>
-						</div>
-						
-						<div class="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div 
-								class="p-2 hover:bg-brand-surface-elevated rounded-md text-brand-text-muted hover:text-brand-text transition-colors"
-								onclick={(e) => { e.stopPropagation(); openEditModal(board); }}
-								title="Editar tablero"
-							>
-								<Edit2 class="w-4 h-4" />
-							</div>
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div 
-								class="p-2 hover:bg-brand-surface-elevated rounded-md text-brand-text-muted hover:text-red-400 transition-colors"
-								onclick={(e) => { e.stopPropagation(); requestDeleteBoard(board.id); }}
-								title="Eliminar tablero"
-							>
-								<Trash2 class="w-4 h-4" />
-							</div>
-						</div>
-					</div>
-				</div>
+					{filter.label}
+				</button>
 			{/each}
 		</div>
-	{/if}
+	</div>
+
+	<!-- Escritorio: el layout de la captura. Móvil: una pestaña a la vez. -->
+	<div class="hidden lg:grid lg:grid-cols-3 gap-4 items-start">
+		<Dashboard />
+		<div class="space-y-4">
+			<section class="bg-[#0d1216] border border-brand-divider rounded-2xl p-4 md:p-5 shadow-sm">
+				<div class="flex items-start justify-between gap-3 mb-3">
+					<div>
+						<h2 class="text-[11px] font-black uppercase tracking-[0.18em] text-brand-text">Control necesidad vs deseo</h2>
+						<p class="text-[10px] text-brand-text-muted mt-1">Presupuesto inteligente · regla 50/20/30</p>
+					</div>
+				</div>
+				<div class="grid grid-cols-2 gap-3 mb-3">
+					<div>
+						<p class="text-[9px] font-bold uppercase tracking-wider text-brand-text-muted">Necesidad · {needPct}%</p>
+						<p class="text-lg font-black text-brand-text tabular-nums mt-1">{formatCOP(summary.need)}</p>
+					</div>
+					<div class="text-right">
+						<p class="text-[9px] font-bold uppercase tracking-wider text-brand-text-muted">Deseos · {wantPct}%</p>
+						<p class="text-lg font-black text-brand-text tabular-nums mt-1">{formatCOP(summary.want)}</p>
+					</div>
+				</div>
+				<div class="h-1.5 w-full rounded-full overflow-hidden bg-[#070b0e] flex">
+					<div class="h-full bg-brand-accent" style="width: {clampPct(needPct)}%"></div>
+					<div class="h-full bg-amber-400" style="width: {clampPct(wantPct)}%"></div>
+				</div>
+			</section>
+			<Pockets compact />
+		</div>
+		<div class="space-y-4">
+			<Savings />
+			<Loans />
+		</div>
+	</div>
+
+	<div class="lg:hidden space-y-4">
+		{#if financeUI.tab === 'dashboard'}
+			<section class="bg-[#0d1216] border border-brand-divider rounded-2xl p-4 shadow-sm">
+				<h2 class="text-[11px] font-black uppercase tracking-[0.18em] text-brand-text mb-3">Necesidad vs deseo</h2>
+				<div class="grid grid-cols-2 gap-3 mb-3">
+					<div>
+						<p class="text-[9px] font-bold text-brand-text-muted">Necesidad · {needPct}%</p>
+						<p class="text-base font-black text-brand-text tabular-nums">{formatCOP(summary.need)}</p>
+					</div>
+					<div class="text-right">
+						<p class="text-[9px] font-bold text-brand-text-muted">Deseos · {wantPct}%</p>
+						<p class="text-base font-black text-brand-text tabular-nums">{formatCOP(summary.want)}</p>
+					</div>
+				</div>
+				<div class="h-1.5 w-full rounded-full overflow-hidden bg-[#070b0e] flex">
+					<div class="h-full bg-brand-accent" style="width: {clampPct(needPct)}%"></div>
+					<div class="h-full bg-amber-400" style="width: {clampPct(wantPct)}%"></div>
+				</div>
+			</section>
+			<Dashboard />
+		{:else if financeUI.tab === 'pockets'}
+			<Pockets />
+		{:else if financeUI.tab === 'savings'}
+			<Savings />
+		{:else}
+			<Loans />
+		{/if}
+	</div>
 </div>
 
-{#if showModal}
-	<!-- svelte-ignore a11y_click_events_have_key_events -->
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onclick={() => showModal = false}>
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-md shadow-2xl p-6" onclick={e => e.stopPropagation()}>
-			<h2 class="text-xl font-bold text-brand-text mb-6">{editBoardId ? 'Editar Tablero' : 'Nuevo Tablero Financiero'}</h2>
-			
-			<div class="space-y-5">
-				<div>
-					<label for="board-title" class="block text-sm font-semibold text-brand-text-muted mb-2">Nombre del Tablero</label>
-					<input 
-						id="board-title"
-						type="text" 
-						bind:value={boardTitle}
-						placeholder="Ej. Finanzas Personales 2026..."
-						class="w-full bg-[#070b0e] border border-brand-divider rounded-xl px-4 py-3 text-brand-text focus:outline-none focus:border-brand-accent transition-colors"
-						autofocus
-					/>
-				</div>
-				<div>
-					<label for="board-desc" class="block text-sm font-semibold text-brand-text-muted mb-2">Descripción (Opcional)</label>
-					<textarea 
-						id="board-desc"
-						bind:value={boardDescription}
-						placeholder="Ej. Presupuesto para la casa..."
-						class="w-full bg-[#070b0e] border border-brand-divider rounded-xl px-4 py-3 text-brand-text focus:outline-none focus:border-brand-accent transition-colors resize-none h-24"
-					></textarea>
-				</div>
-			</div>
-			
-			<div class="flex justify-end gap-3 mt-8">
-				<button 
-					onclick={() => showModal = false}
-					class="px-5 py-2.5 rounded-xl font-semibold text-brand-text-muted hover:bg-brand-surface-elevated transition-colors"
-				>
-					Cancelar
-				</button>
-				<button 
-					onclick={saveBoard}
-					disabled={!boardTitle.trim()}
-					class="px-5 py-2.5 rounded-xl font-bold bg-brand-accent text-brand-bg hover:brightness-105 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-				>
-					{editBoardId ? 'Guardar Cambios' : 'Crear Tablero'}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<button
+	type="button"
+	onclick={() => openFinanceModal('expense')}
+	class="fixed right-5 bottom-20 lg:bottom-6 z-40 w-14 h-14 rounded-full bg-brand-accent text-brand-bg shadow-[0_0_20px_var(--color-brand-accent-muted)] flex items-center justify-center hover:brightness-110 transition-all"
+	aria-label="Registrar gasto"
+>
+	<Plus class="w-7 h-7" />
+</button>
 
-<!-- Modal Confirmar Eliminación de Tablero -->
-{#if boardToDelete !== null}
-	<div class="fixed inset-0 bg-black/80 z-[70] flex items-center justify-center backdrop-blur-sm p-4">
-		<div class="bg-brand-surface border border-brand-divider rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col items-center text-center">
-			<div class="w-12 h-12 rounded-full bg-red-400/20 text-red-400 flex items-center justify-center mb-4">
-				<AlertTriangle class="w-6 h-6" />
-			</div>
-			<h3 class="text-lg font-bold text-brand-text mb-2">¿Eliminar Tablero?</h3>
-			<p class="text-sm text-brand-text-muted mb-6">Este tablero y todas sus transacciones serán eliminados permanentemente y no podrán recuperarse.</p>
-			<div class="flex justify-center gap-3 w-full">
-				<button 
-					class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors" 
-					onclick={() => boardToDelete = null}>
-					Cancelar
-				</button>
-				<button 
-					class="flex-1 px-4 py-2 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors shadow-[0_0_10px_rgba(239,68,68,0.3)]" 
-					onclick={confirmDeleteBoard}>
-					Eliminar
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<FinanceTabs />
+<TransactionModal />
