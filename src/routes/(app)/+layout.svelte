@@ -3,9 +3,21 @@
 	import GlobalPomodoro from '$lib/components/GlobalPomodoro.svelte';
 	import { Menu } from '@lucide/svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
+	import { onMount } from 'svelte';
+	import { sectionPrefs } from '$lib/sectionPrefs.svelte';
+	import { pomodoro } from '$lib/pomodoro.svelte';
 
 	let { children } = $props();
 	let isMenuOpen = $state(false);
+
+	// Si el usuario ocultó "Foco", no se muestra el widget salvo que haya una sesión en curso
+	const showPomodoro = $derived(
+		sectionPrefs.isVisible('pomodoro') || pomodoro.running || pomodoro.awaitingAck
+	);
+
+	onMount(() => {
+		sectionPrefs.load();
+	});
 
 	function toggleMenu() {
 		isMenuOpen = !isMenuOpen;
@@ -45,6 +57,8 @@
 			{@render children()}
 		</div>
 
-		<GlobalPomodoro />
+		{#if showPomodoro}
+			<GlobalPomodoro />
+		{/if}
 	</div>
 </div>

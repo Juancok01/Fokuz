@@ -3,18 +3,31 @@
 	import { Home, RefreshCw, ListChecks, User, Timer, StickyNote, X, LineChart } from '@lucide/svelte';
 	import { pomodoro, pomodoroUI } from '$lib/pomodoro.svelte';
 	import logo from '$lib/assets/Logo_Fokuz.png';
+	import { sectionPrefs, type SectionId } from '$lib/sectionPrefs.svelte';
 
 	let { isOpen = false, closeMenu } = $props<{ isOpen: boolean, closeMenu: () => void }>();
 
-	const tabs = [
+	type Tab = {
+		id?: string;
+		section?: SectionId;
+		href: string;
+		label: string;
+		icon: typeof Home;
+		match: (path: string) => boolean;
+		live?: () => boolean;
+	};
+
+	const allTabs: Tab[] = [
 		{ href: '/', label: 'Inicio', icon: Home, match: (path: string) => path === '/' },
 		{
+			section: 'habitos',
 			href: '/habitos',
 			label: 'Hábitos',
 			icon: RefreshCw,
 			match: (path: string) => path.startsWith('/habitos')
 		},
 		{
+			section: 'tareas',
 			href: '/tareas',
 			label: 'Tareas',
 			icon: ListChecks,
@@ -22,6 +35,7 @@
 		},
 		{
 			id: 'pomodoro',
+			section: 'pomodoro',
 			href: '#',
 			label: 'Foco',
 			icon: Timer,
@@ -29,12 +43,14 @@
 			live: () => pomodoro.running || pomodoro.awaitingAck
 		},
 		{
+			section: 'notas',
 			href: '/notas',
 			label: 'Notas',
 			icon: StickyNote,
 			match: (path: string) => path.startsWith('/notas')
 		},
 		{
+			section: 'finanzas',
 			href: '/finanzas',
 			label: 'Finanzas',
 			icon: LineChart,
@@ -42,6 +58,11 @@
 		},
 		{ href: '/perfil', label: 'Perfil', icon: User, match: (path: string) => path.startsWith('/perfil') }
 	];
+
+	// Oculta las secciones que el usuario desactivó en Perfil → Personalizar secciones
+	const tabs = $derived(
+		allTabs.filter((tab) => !tab.section || sectionPrefs.isVisible(tab.section))
+	);
 </script>
 
 <nav

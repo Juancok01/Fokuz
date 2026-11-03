@@ -1,7 +1,70 @@
 <script lang="ts">
-	import { User, LogOut, Check, Pencil, X, UserPlus, Trash2, MoreVertical } from '@lucide/svelte';
+	import {
+		User,
+		LogOut,
+		Check,
+		Pencil,
+		X,
+		UserPlus,
+		Trash2,
+		MoreVertical,
+		LayoutGrid,
+		RefreshCw,
+		ListChecks,
+		Timer,
+		StickyNote,
+		LineChart
+	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
+	import { sectionPrefs, SECTION_OPTIONS, type SectionId } from '$lib/sectionPrefs.svelte';
+
+	const sectionIcons: Record<SectionId, typeof User> = {
+		habitos: RefreshCw,
+		tareas: ListChecks,
+		pomodoro: Timer,
+		notas: StickyNote,
+		finanzas: LineChart
+	};
+
+	let showSections = $state(false);
+	let draftSections = $state<SectionId[]>([]);
+	let savingSections = $state(false);
+	let sectionsSaved = $state(false);
+	let sectionsError = $state('');
+
+	const openSections = () => {
+		draftSections = [...sectionPrefs.visible];
+		sectionsSaved = false;
+		sectionsError = '';
+		showSections = true;
+	};
+
+	const closeSections = () => {
+		showSections = false;
+		sectionsError = '';
+		sectionsSaved = false;
+	};
+
+	const toggleSection = (id: SectionId) => {
+		draftSections = draftSections.includes(id)
+			? draftSections.filter((s) => s !== id)
+			: [...draftSections, id];
+	};
+
+	const saveSections = async () => {
+		savingSections = true;
+		sectionsError = '';
+		const error = await sectionPrefs.save(draftSections);
+		savingSections = false;
+		if (error) {
+			// Queda guardado en este dispositivo aunque falle la sincronización
+			sectionsError = 'Guardado en este dispositivo, pero no se pudo sincronizar: ' + error;
+			return;
+		}
+		sectionsSaved = true;
+		setTimeout(() => closeSections(), 800);
+	};
 
 	type Contact = {
 		id: string;
@@ -449,6 +512,14 @@
 			Conectar con contactos
 		</button>
 
+		<button
+			onclick={openSections}
+			class="w-full flex items-center justify-center gap-2 bg-brand-surface border border-brand-divider text-brand-text px-6 py-4 rounded-xl font-medium hover:bg-brand-surface-elevated transition-colors"
+		>
+			<LayoutGrid class="w-5 h-5 text-brand-accent" />
+			Personalizar secciones
+		</button>
+
 		<div class="space-y-3">
 			<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">
 				Mis contactos
@@ -712,6 +783,84 @@
 		{#if editContactError}
 			<p class="text-sm text-red-400 mt-3">{editContactError}</p>
 		{/if}
+		</div>
+	</div>
+{/if}
+
+{#if showSections}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity"
+		onclick={closeSections}
+	>
+		<div class="w-full max-w-md bg-brand-surface rounded-t-3xl sm:rounded-2xl z-40 p-6 pt-4 shadow-2xl border-t sm:border border-brand-divider animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto" onclick={e => e.stopPropagation()}>
+			<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-6 sm:hidden"></div>
+
+			<div class="flex justify-between items-center mb-2">
+				<h3 class="text-lg font-bold text-brand-text">Personalizar secciones</h3>
+				<button
+					class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text"
+					onclick={closeSections}
+					aria-label="Cerrar"
+				>
+					<X class="w-4 h-4" />
+				</button>
+			</div>
+			<p class="text-sm text-brand-text-muted mb-5">
+				Elige qué secciones quieres ver en el menú. Inicio y Perfil siempre están visibles.
+			</p>
+
+			<ul class="space-y-2 mb-6">
+				{#each SECTION_OPTIONS as option (option.id)}
+					{@const Icon = sectionIcons[option.id]}
+					{@const on = draftSections.includes(option.id)}
+					<li>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={on}
+							onclick={() => toggleSection(option.id)}
+							class="w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors {on
+								? 'border-brand-accent/50 bg-brand-surface-elevated'
+								: 'border-brand-divider bg-brand-bg hover:bg-brand-surface-elevated'}"
+						>
+							<div class="w-9 h-9 rounded-lg bg-brand-bg border border-brand-divider flex items-center justify-center shrink-0 {on ? 'text-brand-accent' : 'text-brand-text-muted'}">
+								<Icon class="w-4 h-4" />
+							</div>
+							<div class="flex-1 min-w-0">
+								<p class="font-medium truncate {on ? 'text-brand-text' : 'text-brand-text-muted'}">{option.label}</p>
+								<p class="text-xs text-brand-text-muted truncate">{option.description}</p>
+							</div>
+							<span
+								class="relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors {on ? 'bg-brand-accent' : 'bg-brand-divider'}"
+								aria-hidden="true"
+							>
+								<span
+									class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform {on ? 'translate-x-5' : 'translate-x-0'}"
+								></span>
+							</span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+
+			<button
+				onclick={saveSections}
+				disabled={savingSections}
+				class="w-full bg-brand-accent hover:brightness-105 disabled:opacity-60 text-brand-bg font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
+			>
+				{#if sectionsSaved}
+					<Check class="w-5 h-5" />
+					Guardado
+				{:else}
+					{savingSections ? 'Guardando...' : 'Guardar preferencias'}
+				{/if}
+			</button>
+
+			{#if sectionsError}
+				<p class="text-sm text-red-400 mt-3">{sectionsError}</p>
+			{/if}
 		</div>
 	</div>
 {/if}

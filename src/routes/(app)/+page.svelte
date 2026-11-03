@@ -17,6 +17,7 @@
 	import { afterNavigate } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
 	import { pomodoroUI } from "$lib/pomodoro.svelte";
+	import { sectionPrefs } from "$lib/sectionPrefs.svelte";
 	import logo from "$lib/assets/Logo_Fokuz.png";
 	import HabitIcon from "$lib/components/HabitIcon.svelte";
 	import {
@@ -530,6 +531,7 @@
 			</div>
 
 			<!-- Hábitos Section -->
+			{#if sectionPrefs.isVisible("habitos")}
 			<section>
 				<div class="flex items-center justify-between mb-4 mt-2">
 					<div class="flex items-center gap-2">
@@ -655,6 +657,7 @@
 					{/if}
 				{/if}
 			</section>
+			{/if}
 		</div>
 
 		<!-- Right Column -->
