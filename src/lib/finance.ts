@@ -1,6 +1,6 @@
 // Utilidades y tipos del módulo de Finanzas (tableros reales en Supabase)
 
-export type TxType = 'income' | 'expense';
+export type TxType = 'income' | 'expense' | 'saving';
 export type PaymentMethod = 'efectivo' | 'digital' | 'tarjeta';
 
 export interface FinanceBoard {
@@ -29,10 +29,19 @@ export interface FinanceCategory {
 	sort_order: number;
 }
 
+export interface FinanceSubcategory {
+	id: number;
+	category_id: number;
+	name: string;
+	/** presupuesto mensual opcional */
+	monthly_budget?: number | null;
+}
+
 export interface FinanceTransaction {
 	id: number;
 	board_id: number;
 	category_id: number | null;
+	subcategory_id: number | null;
 	amount: number;
 	type: TxType;
 	description: string | null;
@@ -57,6 +66,30 @@ export const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: string }
 	{ id: 'tarjeta', label: 'Tarjeta', icon: '💳' }
 ];
 
+export const DEFAULT_SAVING_CATEGORIES: { name: string; type: TxType; icon: string }[] = [
+	{ name: 'Fondo de emergencia', type: 'saving', icon: '🛟' },
+	{ name: 'Inversión', type: 'saving', icon: '📈' },
+	{ name: 'Meta', type: 'saving', icon: '🎯' }
+];
+
+export const TX_TYPES: { id: TxType; label: string; short: string; sign: string }[] = [
+	{ id: 'expense', label: 'Gasto', short: 'Gastos', sign: '−' },
+	{ id: 'income', label: 'Ingreso', short: 'Ingresos', sign: '+' },
+	{ id: 'saving', label: 'Ahorro', short: 'Ahorros', sign: '→' }
+];
+
+/** Colores de datos validados contra la superficie oscura (#032221) */
+export const CHART = {
+	income: '#00DF81',
+	expense: '#e66767',
+	saving: '#3987e5',
+	categories: ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'],
+	other: '#5b6b68'
+};
+
+/** Signo del movimiento sobre el saldo: ingreso suma; gasto y ahorro restan */
+export const txSign = (type: TxType) => (type === 'income' ? 1 : -1);
+
 export const DEFAULT_CATEGORIES: { name: string; type: TxType; icon: string }[] = [
 	{ name: 'Mercado', type: 'expense', icon: '🛒' },
 	{ name: 'Comida', type: 'expense', icon: '🍔' },
@@ -73,7 +106,8 @@ export const DEFAULT_CATEGORIES: { name: string; type: TxType; icon: string }[] 
 	{ name: 'Extra', type: 'income', icon: '✨' },
 	{ name: 'Ventas', type: 'income', icon: '🏷️' },
 	{ name: 'Regalo', type: 'income', icon: '🎁' },
-	{ name: 'Otros', type: 'income', icon: '📥' }
+	{ name: 'Otros', type: 'income', icon: '📥' },
+	...DEFAULT_SAVING_CATEGORIES
 ];
 
 export const MONTHS = [
@@ -128,4 +162,31 @@ export function dayLabel(iso: string): string {
 		...(y !== new Date().getFullYear() ? { year: 'numeric' } : {})
 	});
 	return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+export interface WeekBucket {
+	label: string; // "Sem 1"
+	range: string; // "1-7"
+	income: number;
+	expense: number;
+	current: boolean;
+	future: boolean;
+}
+
+export interface SpendSlice {
+	key: string;
+	name: string;
+	icon: string;
+	total: number;
+	color: string;
+	subs: { name: string; total: number }[];
+}
+
+/** Tono del avance de un presupuesto: bien < 85 % ≤ alerta < 100 % ≤ excedido */
+export function budgetTone(pct: number): 'good' | 'warning' | 'critical' {
+	return pct >= 100 ? 'critical' : pct >= 85 ? 'warning' : 'good';
+}
+
+export function digitsOnly(value: string, max = 12): string {
+	return value.replace(/\D/g, '').replace(/^0+/, '').slice(0, max);
 }

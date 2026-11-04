@@ -609,6 +609,8 @@
 		<LogOut class="w-5 h-5 text-red-400" />
 		Cerrar sesión
 	</button>
+
+	<p class="text-center text-xs text-brand-text-muted">Fokuz versión {__APP_VERSION__}</p>
 </div>
 
 {#if showEditProfile}

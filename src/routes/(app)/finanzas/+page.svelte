@@ -14,8 +14,6 @@
 	const now = new Date();
 	const monthLabel = `${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
 
-	const total = $derived(boards.reduce((sum, b) => sum + Number(b.balance), 0));
-
 	async function loadBoards() {
 		if (!supabase) {
 			loading = false;
@@ -65,14 +63,6 @@
 	{:else if loadError}
 		<p class="text-sm text-red-400 bg-red-500/10 border border-red-400/30 rounded-2xl p-4">{loadError}</p>
 	{:else}
-		{#if boards.length > 0}
-			<section class="relative rounded-2xl border border-brand-divider bg-brand-surface p-5 overflow-hidden">
-				<div class="absolute -top-20 -right-20 w-56 h-56 bg-brand-accent/10 rounded-full blur-3xl pointer-events-none"></div>
-				<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Saldo total</p>
-				<p class="text-3xl font-black text-brand-text tabular-nums mt-1 {total < 0 ? 'text-red-400' : ''}">{formatCOP(total)}</p>
-				<p class="text-xs text-brand-text-muted mt-1">{boards.length} {boards.length === 1 ? 'tablero' : 'tableros'} · {monthLabel}</p>
-			</section>
-		{/if}
 
 		<p class="text-xs font-bold text-brand-text-muted tracking-wider uppercase">Mis tableros</p>
 

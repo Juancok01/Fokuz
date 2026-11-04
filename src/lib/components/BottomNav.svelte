@@ -127,4 +127,8 @@
 			{/if}
 		{/each}
 	</div>
+
+	<div class="shrink-0 px-6 py-4 border-t border-brand-divider text-xs text-brand-text-muted">
+		Fokuz <span class="font-semibold text-brand-text">v{__APP_VERSION__}</span>
+	</div>
 </nav>

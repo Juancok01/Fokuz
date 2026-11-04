@@ -83,11 +83,15 @@
 		sharedWith = sharedWith.includes(id) ? sharedWith.filter((c) => c !== id) : [...sharedWith, id];
 	}
 
-	function onInitialInput(e: Event) {
+	function digitsFrom(e: Event) {
 		const el = e.currentTarget as HTMLInputElement;
-		initialDigits = el.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12);
-		el.value = initialDigits ? formatDigits(initialDigits) : '';
+		const d = el.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12);
+		el.value = d ? formatDigits(d) : '';
+		return d;
 	}
+
+	const onInitialInput = (e: Event) => (initialDigits = digitsFrom(e));
+
 
 	async function save() {
 		if (!supabase) return;
@@ -99,20 +103,29 @@
 		saving = true;
 		errorMsg = '';
 
-		const payload = {
+		const base = {
 			title: name,
 			description: description.trim() || null,
 			color,
 			initial_balance: Number(initialDigits || 0)
 		};
-
 		let boardId = board?.id ?? null;
 
 		if (boardId) {
-			const { error } = await supabase.from('finance_boards').update(payload).eq('id', boardId);
+			const { error } = await supabase.from('finance_boards').update(base).eq('id', boardId);
 			if (error) return fail(error.message);
 		} else {
-			const { data, error } = await supabase.from('finance_boards').insert(payload).select('id').single();
+			const {
+				data: { session }
+			} = await supabase.auth.getSession();
+			const userId = session?.user?.id;
+			if (!userId) return fail('Debes iniciar sesión.');
+
+			const { data, error } = await supabase
+				.from('finance_boards')
+				.insert({ ...base, user_id: userId })
+				.select('id')
+				.single();
 			if (error || !data) return fail(error?.message ?? 'No se pudo crear el tablero.');
 			boardId = data.id as number;
 
@@ -163,7 +176,7 @@
 			<div class="w-12 h-1.5 bg-brand-divider rounded-full mx-auto mb-5 sm:hidden"></div>
 
 			<div class="flex justify-between items-center mb-5">
-				<h3 class="text-lg font-bold text-brand-text">{isEdit ? 'Editar tablero' : 'Nuevo tablero'}</h3>
+				<h3 class="text-lg font-bold text-brand-text">{isEdit ? 'Editar y compartir' : 'Nuevo tablero'}</h3>
 				<button class="p-2 bg-brand-surface-elevated rounded-full text-brand-text-muted hover:text-brand-text" onclick={onclose} aria-label="Cerrar">
 					<X class="w-4 h-4" />
 				</button>
