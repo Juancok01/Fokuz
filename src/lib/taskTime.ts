@@ -194,9 +194,13 @@ export const DAY_PERIODS = [
 	{ key: 'noche', label: 'Noche', range: '6 p. m. – 12 a. m.', from: 18 * 60, to: 24 * 60 }
 ] as const;
 
-/** Agrupa tareas (ya ordenadas) por franja del día; las que no tienen hora van al final. */
+/**
+ * Agrupa tareas (ya ordenadas) por franja del día; las que no tienen hora van al final.
+ * Con descending: Noche → Tarde → Mañana → Madrugada.
+ */
 export function groupTasksByPeriod<T extends TimedTask>(
-	tasks: T[]
+	tasks: T[],
+	{ descending = false }: { descending?: boolean } = {}
 ): { key: string; label: string; range: string; tasks: T[] }[] {
 	const groups = DAY_PERIODS.map((p) => ({ key: p.key, label: p.label, range: p.range, tasks: [] as T[] }));
 	const noTime = { key: 'sin-hora', label: 'Sin hora', range: '', tasks: [] as T[] };
@@ -209,5 +213,6 @@ export function groupTasksByPeriod<T extends TimedTask>(
 		const index = DAY_PERIODS.findIndex((p) => minutes >= p.from && minutes < p.to);
 		groups[index === -1 ? groups.length - 1 : index].tasks.push(task);
 	}
-	return [...groups, noTime].filter((g) => g.tasks.length > 0);
+	const ordered = descending ? [...groups].reverse() : groups;
+	return [...ordered, noTime].filter((g) => g.tasks.length > 0);
 }

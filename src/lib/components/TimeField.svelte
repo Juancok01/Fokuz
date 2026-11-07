@@ -1,87 +1,117 @@
 <script lang="ts">
 	/**
-	 * Selector de hora con formato 12 h (a. m./p. m.).
+	 * Selector de hora con menú desplegable en formato 12 h (a. m./p. m.).
 	 * El valor enlazado (bind:value) sigue siendo 24 h "HH:MM",
 	 * así que la validación y lo que se guarda en Supabase no cambian.
 	 */
+	import { tick } from 'svelte';
+	import { ChevronDown } from '@lucide/svelte';
+
 	type Props = {
 		value?: string;
 		onchange?: (value: string) => void;
 		class?: string;
 		label?: string;
+		/** Minutos entre cada opción del menú */
+		step?: number;
 	};
 
-	let { value = $bindable('09:00'), onchange, class: className = '', label = 'Hora' }: Props = $props();
+	let {
+		value = $bindable('09:00'),
+		onchange,
+		class: className = '',
+		label = 'Hora',
+		step = 15
+	}: Props = $props();
 
-	const hours12 = Array.from({ length: 12 }, (_, i) => String(i + 1));
-	const baseMinutes = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'));
+	let open = $state(false);
+	let root = $state<HTMLDivElement>();
+	let list = $state<HTMLUListElement>();
 
-	const h24 = $derived(Number(value?.match(/^(\d{2}):/)?.[1] ?? 9));
-	const mm = $derived(value?.match(/:(\d{2})/)?.[1] ?? '00');
-	const h12 = $derived(String(h24 % 12 || 12));
-	const meridiem = $derived(h24 < 12 ? 'am' : 'pm');
-	const minutes = $derived(baseMinutes.includes(mm) ? baseMinutes : [...baseMinutes, mm].sort());
+	function toHHMM(total: number) {
+		const h = Math.floor(total / 60);
+		const m = total % 60;
+		return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+	}
 
-	function set(h: string, m: string, mer: string) {
-		const hour = (Number(h) % 12) + (mer === 'pm' ? 12 : 0);
-		value = `${String(hour).padStart(2, '0')}:${m}`;
-		onchange?.(value);
+	function format12(v?: string | null) {
+		const match = v?.match(/^(\d{2}):(\d{2})/);
+		if (!match) return '--:--';
+		const h = Number(match[1]);
+		const meridiem = h < 12 ? 'a. m.' : 'p. m.';
+		return `${h % 12 || 12}:${match[2]} ${meridiem}`;
+	}
+
+	const options = $derived.by(() => {
+		const all: string[] = [];
+		for (let t = 0; t < 24 * 60; t += step) all.push(toHHMM(t));
+		if (value && /^\d{2}:\d{2}$/.test(value) && !all.includes(value)) {
+			all.push(value);
+			all.sort();
+		}
+		return all;
+	});
+
+	async function toggle() {
+		open = !open;
+		if (!open) return;
+		await tick();
+		const selected = list?.querySelector<HTMLElement>('[aria-selected="true"]');
+		if (list && selected) {
+			list.scrollTop = selected.offsetTop - list.clientHeight / 2 + selected.clientHeight / 2;
+		}
+	}
+
+	function choose(v: string) {
+		value = v;
+		open = false;
+		onchange?.(v);
+	}
+
+	function onWindowClick(e: MouseEvent) {
+		if (open && root && !root.contains(e.target as Node)) open = false;
+	}
+
+	function onWindowKey(e: KeyboardEvent) {
+		if (open && e.key === 'Escape') open = false;
 	}
 </script>
 
-<div class="flex items-center gap-0.5 {className}" role="group" aria-label={label}>
-	<select
-		aria-label="{label}: hora"
-		value={h12}
-		onchange={(e) => set(e.currentTarget.value, mm, meridiem)}
-		class="time-select"
-	>
-		{#each hours12 as h (h)}
-			<option value={h}>{h}</option>
-		{/each}
-	</select>
-	<span class="opacity-70">:</span>
-	<select
-		aria-label="{label}: minutos"
-		value={mm}
-		onchange={(e) => set(h12, e.currentTarget.value, meridiem)}
-		class="time-select"
-	>
-		{#each minutes as m (m)}
-			<option value={m}>{m}</option>
-		{/each}
-	</select>
-	<select
-		aria-label="{label}: a. m. o p. m."
-		value={meridiem}
-		onchange={(e) => set(h12, mm, e.currentTarget.value)}
-		class="time-select ampm"
-	>
-		<option value="am">a. m.</option>
-		<option value="pm">p. m.</option>
-	</select>
-</div>
+<svelte:window onclick={onWindowClick} onkeydown={onWindowKey} />
 
-<style>
-	.time-select {
-		appearance: none;
-		-webkit-appearance: none;
-		background: transparent;
-		border: none;
-		color: inherit;
-		font: inherit;
-		outline: none;
-		cursor: pointer;
-		padding: 0;
-		color-scheme: dark;
-		font-variant-numeric: tabular-nums;
-	}
-	.ampm {
-		margin-left: 0.4rem;
-		font-size: 0.8em;
-	}
-	.time-select option {
-		background-color: #0d1117;
-		color: #fff;
-	}
-</style>
+<div class="relative" bind:this={root}>
+	<button
+		type="button"
+		class="flex items-center justify-between gap-2 text-left {className}"
+		aria-haspopup="listbox"
+		aria-expanded={open}
+		aria-label="{label}: {format12(value)}"
+		onclick={toggle}
+	>
+		<span class="whitespace-nowrap">{format12(value)}</span>
+		<ChevronDown class="w-3.5 h-3.5 shrink-0 opacity-60 transition-transform {open ? 'rotate-180' : ''}" />
+	</button>
+
+	{#if open}
+		<ul
+			bind:this={list}
+			role="listbox"
+			aria-label={label}
+			class="absolute left-0 right-0 top-full mt-1 z-50 max-h-56 overflow-y-auto rounded-lg border border-brand-divider bg-brand-surface py-1 shadow-xl shadow-black/40"
+		>
+			{#each options as opt (opt)}
+				<li role="option" aria-selected={opt === value}>
+					<button
+						type="button"
+						class="w-full px-3 py-1.5 text-left text-sm font-bold tabular-nums whitespace-nowrap transition-colors {opt === value
+							? 'bg-brand-accent/15 text-brand-accent'
+							: 'text-brand-text hover:bg-white/5'}"
+						onclick={() => choose(opt)}
+					>
+						{format12(opt)}
+					</button>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+</div>
