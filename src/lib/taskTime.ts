@@ -169,3 +169,45 @@ export function nextFreeSlot(
 
 export const START_TIME_SQL_HINT =
 	'Para guardar el horario hay que agregar start_time y end_time. Ejecuta supabase/migrations/022_task_start_time.sql y 023_task_end_time.sql en el SQL Editor de Supabase.';
+
+/** "14:30" → { time: "2:30", meridiem: "p. m." } */
+export function time12Parts(value?: string | null): { time: string; meridiem: string } | null {
+	const time = extractTime(value);
+	if (!time) return null;
+	const [hours, minutes] = time.split(':').map(Number);
+	return {
+		time: `${hours % 12 || 12}:${String(minutes).padStart(2, '0')}`,
+		meridiem: hours < 12 ? 'a. m.' : 'p. m.'
+	};
+}
+
+/** "14:30" → "2:30 p. m." */
+export function formatTime12(value?: string | null): string | null {
+	const parts = time12Parts(value);
+	return parts ? `${parts.time} ${parts.meridiem}` : null;
+}
+
+export const DAY_PERIODS = [
+	{ key: 'madrugada', label: 'Madrugada', range: '12 a. m. – 6 a. m.', from: 0, to: 6 * 60 },
+	{ key: 'manana', label: 'Mañana', range: '6 a. m. – 12 p. m.', from: 6 * 60, to: 12 * 60 },
+	{ key: 'tarde', label: 'Tarde', range: '12 p. m. – 6 p. m.', from: 12 * 60, to: 18 * 60 },
+	{ key: 'noche', label: 'Noche', range: '6 p. m. – 12 a. m.', from: 18 * 60, to: 24 * 60 }
+] as const;
+
+/** Agrupa tareas (ya ordenadas) por franja del día; las que no tienen hora van al final. */
+export function groupTasksByPeriod<T extends TimedTask>(
+	tasks: T[]
+): { key: string; label: string; range: string; tasks: T[] }[] {
+	const groups = DAY_PERIODS.map((p) => ({ key: p.key, label: p.label, range: p.range, tasks: [] as T[] }));
+	const noTime = { key: 'sin-hora', label: 'Sin hora', range: '', tasks: [] as T[] };
+	for (const task of tasks) {
+		const minutes = timeToMinutes(taskTimeLabel(task));
+		if (minutes == null) {
+			noTime.tasks.push(task);
+			continue;
+		}
+		const index = DAY_PERIODS.findIndex((p) => minutes >= p.from && minutes < p.to);
+		groups[index === -1 ? groups.length - 1 : index].tasks.push(task);
+	}
+	return [...groups, noTime].filter((g) => g.tasks.length > 0);
+}

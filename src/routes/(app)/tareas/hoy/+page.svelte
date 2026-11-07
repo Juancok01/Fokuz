@@ -3,6 +3,7 @@
 	import { supabase } from '$lib/supabaseClient';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import TimeField from '$lib/components/TimeField.svelte';
 
 	import {
 		taskTimeLabel,
@@ -429,23 +430,12 @@
 								<div class="flex items-center gap-2">
 									<label class="flex-1">
 										<span class="block text-[9px] font-bold uppercase tracking-wider text-brand-text-muted mb-1">Inicia</span>
-										<input
-											type="time"
-											lang="en-GB"
-											bind:value={editStart}
-											onchange={onEditStartInput}
-											class="time-input w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2 text-sm font-black tabular-nums text-brand-accent outline-none focus:border-brand-accent"
-										/>
+										<TimeField bind:value={editStart} onchange={onEditStartInput} label="Inicia" class="w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2 text-sm font-black tabular-nums text-brand-accent focus-within:border-brand-accent" />
 									</label>
 									<span class="text-brand-text-muted font-bold mt-4">–</span>
 									<label class="flex-1">
 										<span class="block text-[9px] font-bold uppercase tracking-wider text-brand-text-muted mb-1">Termina</span>
-										<input
-											type="time"
-											lang="en-GB"
-											bind:value={editEnd}
-											class="time-input w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2 text-sm font-black tabular-nums text-brand-text outline-none focus:border-brand-accent"
-										/>
+										<TimeField bind:value={editEnd} label="Termina" class="w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2 text-sm font-black tabular-nums text-brand-text focus-within:border-brand-accent" />
 									</label>
 								</div>
 								{#if slotErrorId === task.id && slotErrorMsg}
@@ -506,25 +496,12 @@
 					<div class="flex items-center gap-2">
 						<label class="flex-1">
 							<span class="block text-[9px] font-bold uppercase tracking-wider text-brand-text-muted mb-1">Inicia</span>
-							<input
-								type="time"
-								lang="en-GB"
-								bind:value={newTime}
-								onchange={onStartInput}
-								required
-								class="time-input w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2.5 text-sm font-black tabular-nums text-brand-accent outline-none focus:border-brand-accent"
-							/>
+							<TimeField bind:value={newTime} onchange={onStartInput} label="Inicia" class="w-full bg-brand-surface border border-brand-divider rounded-lg px-3 py-2.5 text-sm font-black tabular-nums text-brand-accent focus-within:border-brand-accent" />
 						</label>
 						<span class="text-brand-text-muted font-bold mt-4">–</span>
 						<label class="flex-1">
 							<span class="block text-[9px] font-bold uppercase tracking-wider text-brand-text-muted mb-1">Termina</span>
-							<input
-								type="time"
-								lang="en-GB"
-								bind:value={newEndTime}
-								required
-								class="time-input w-full bg-brand-surface border rounded-lg px-3 py-2.5 text-sm font-black tabular-nums text-brand-text outline-none focus:border-brand-accent {invalidRange ? 'border-amber-500/70' : 'border-brand-divider'}"
-							/>
+							<TimeField bind:value={newEndTime} label="Termina" class="w-full bg-brand-surface border rounded-lg px-3 py-2.5 text-sm font-black tabular-nums text-brand-text focus-within:border-brand-accent {invalidRange ? 'border-amber-500/70' : 'border-brand-divider'}" />
 						</label>
 					</div>
 				</div>
@@ -591,15 +568,3 @@
 	</div>
 {/if}
 
-<style>
-	.time-input {
-		color-scheme: dark;
-	}
-	.time-input::-webkit-calendar-picker-indicator {
-		display: none;
-		-webkit-appearance: none;
-	}
-	.time-input::-webkit-datetime-edit-ampm-field {
-		display: none;
-	}
-</style>
