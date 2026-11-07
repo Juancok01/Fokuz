@@ -96,17 +96,17 @@
 		});
 
 		return filtered.sort((a, b) => {
-			// Orden descendente: la hora más tarde primero; las tareas sin hora al final.
+			// Orden cronológico: la hora más temprana primero; las tareas sin hora al final.
 			const timeA = taskTimeLabel(a);
 			const timeB = taskTimeLabel(b);
 			if (!timeA && !timeB) return 0;
 			if (!timeA) return 1;
 			if (!timeB) return -1;
-			return timeB.localeCompare(timeA);
+			return timeA.localeCompare(timeB);
 		});
 	});
 
-	const taskGroups = $derived(groupTasksByPeriod(dayTasks, { descending: true }));
+	const taskGroups = $derived(groupTasksByPeriod(dayTasks));
 
 	const createConflicts = $derived(
 		findOverlappingTasks(dayTasks, selectedDateStr, newTime, newEndTime)
