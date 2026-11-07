@@ -18,7 +18,9 @@
 		durationLabel,
 		START_TIME_SQL_HINT,
 		DEFAULT_DURATION_MIN,
-		addLocalDays
+		addLocalDays,
+		time12Parts,
+		groupTasksByPeriod
 	} from '$lib/taskTime';
 
 	type Task = {
@@ -94,11 +96,17 @@
 		});
 
 		return filtered.sort((a, b) => {
-			const timeA = taskTimeLabel(a) || '99:99';
-			const timeB = taskTimeLabel(b) || '99:99';
-			return timeA.localeCompare(timeB);
+			// Orden descendente: la hora más tarde primero; las tareas sin hora al final.
+			const timeA = taskTimeLabel(a);
+			const timeB = taskTimeLabel(b);
+			if (!timeA && !timeB) return 0;
+			if (!timeA) return 1;
+			if (!timeB) return -1;
+			return timeB.localeCompare(timeA);
 		});
 	});
+
+	const taskGroups = $derived(groupTasksByPeriod(dayTasks, { descending: true }));
 
 	const createConflicts = $derived(
 		findOverlappingTasks(dayTasks, selectedDateStr, newTime, newEndTime)
@@ -360,13 +368,27 @@
 		</div>
 	{:else}
 		<div class="flex-1 overflow-y-auto custom-scrollbar pb-12">
-			<div class="max-w-4xl mx-auto space-y-3">
-				{#each dayTasks as task}
+			<div class="max-w-4xl mx-auto space-y-6">
+				{#each taskGroups as group (group.key)}
+				<section class="space-y-3">
+					<div class="flex items-center gap-3 px-1">
+						<h2 class="text-xs font-black uppercase tracking-widest text-brand-accent">{group.label}</h2>
+						{#if group.range}
+							<span class="text-[10px] font-bold text-brand-text-muted">{group.range}</span>
+						{/if}
+						<div class="flex-1 h-px bg-brand-divider"></div>
+						<span class="text-[10px] font-bold text-brand-text-muted tabular-nums">
+							{group.tasks.length} {group.tasks.length === 1 ? 'tarea' : 'tareas'}
+						</span>
+					</div>
+				{#each group.tasks as task (task.id)}
 					{@const start = taskTimeLabel(task)}
 					{@const end = taskEndTime(task)}
 					{@const duration = taskDurationLabel(task)}
-					<div class="relative overflow-hidden bg-brand-surface border rounded-2xl transition-colors {slotErrorId === task.id || editingSlotId === task.id ? 'border-brand-accent/50' : 'border-brand-divider hover:border-brand-accent/40'}">
-						<div class="absolute left-0 top-0 bottom-0 w-1 {task.is_completed ? 'bg-brand-divider' : 'bg-brand-accent'}"></div>
+					{@const start12 = time12Parts(start)}
+					{@const end12 = time12Parts(end)}
+					<div class="relative bg-brand-surface border rounded-2xl transition-colors {slotErrorId === task.id || editingSlotId === task.id ? 'border-brand-accent/50' : 'border-brand-divider hover:border-brand-accent/40'}">
+						<div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl {task.is_completed ? 'bg-brand-divider' : 'bg-brand-accent'}"></div>
 						<div class="pl-4 pr-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 							<div class="flex items-center gap-3 min-w-0">
 								<button class="shrink-0 text-brand-text-muted hover:text-brand-accent transition-colors" onclick={() => toggleTask(task)}>
@@ -379,15 +401,15 @@
 								<button
 									type="button"
 									onclick={() => (editingSlotId === task.id ? closeSlotEditor() : openSlotEditor(task))}
-									class="shrink-0 w-[4.25rem] rounded-xl px-1 py-1 text-left hover:bg-[#0d1216] transition-colors"
+									class="shrink-0 w-[5.25rem] rounded-xl px-1 py-1 text-left hover:bg-[#0d1216] transition-colors"
 									aria-label="Editar horario"
 								>
 									<p class="text-sm font-black tabular-nums leading-none {start ? 'text-brand-accent' : 'text-brand-text-muted'}">
-										{start || '—'}
+										{#if start12}{start12.time}<span class="ml-0.5 text-[9px] font-bold opacity-80">{start12.meridiem}</span>{:else}—{/if}
 									</p>
 									<div class="my-1 ml-2 h-3 w-px bg-brand-accent/35"></div>
 									<p class="text-xs font-bold tabular-nums leading-none text-brand-text-muted">
-										{end || '—'}
+										{#if end12}{end12.time}<span class="ml-0.5 text-[9px] opacity-80">{end12.meridiem}</span>{:else}—{/if}
 									</p>
 								</button>
 								<div class="flex flex-col min-w-0">
@@ -452,6 +474,8 @@
 							</div>
 						{/if}
 					</div>
+				{/each}
+				</section>
 				{/each}
 			</div>
 		</div>
