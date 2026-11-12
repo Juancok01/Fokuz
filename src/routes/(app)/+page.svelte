@@ -12,11 +12,19 @@
 		Share2,
 		Bookmark,
 		Play,
+		Pause,
 	} from "@lucide/svelte";
-	import { onMount } from "svelte";
 	import { afterNavigate } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
-	import { pomodoroUI } from "$lib/pomodoro.svelte";
+	import {
+		pomodoro,
+		pomodoroUI,
+		formatPomodoroTime,
+		startPomodoro,
+		pausePomodoro,
+		FOCUS_MS,
+		BREAK_MS,
+	} from "$lib/pomodoro.svelte";
 	import { sectionPrefs } from "$lib/sectionPrefs.svelte";
 	import logo from "$lib/assets/Logo_Fokuz.png";
 	import HabitIcon from "$lib/components/HabitIcon.svelte";
@@ -27,16 +35,26 @@
 		type DailyVerse,
 	} from "$lib/dailyVerse";
 	import {
+		addDaysToDateStr,
+		computeHabitStreak,
 		formatDateInTz,
 		getWeekdayInTz,
 		habitIsScheduledOn,
+		isoWeekNumber,
 		normalizeHabitIcon,
 		normalizeWeekdays,
+		STREAK_LOOKBACK_DAYS,
+		weekdayOfDateStr,
+		weekdaysLabel,
 		type Habit,
 	} from "$lib/habits";
-	import { addLocalDays } from "$lib/taskTime";
 
-	type TodayHabit = Habit & { done: boolean; streak: number; tag: string };
+	type TodayHabit = Habit & {
+		done: boolean;
+		streak: number;
+		tag: string;
+		doneDates: Set<string>;
+	};
 
 	let userName = $state("tú");
 	let pendingCount = $state(0);
@@ -69,44 +87,77 @@
 		return `Hoy, ${weekdayLabel} ${day} ${monthLabel}`;
 	});
 
-	const weekDays = $derived.by(() => {
-		const days = [];
-		const now = new Date();
-		for (let i = -2; i <= 2; i++) {
-			const d = new Date(now);
-			d.setDate(d.getDate() + i);
+	const SHORT_WEEKDAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
-			const weekdayStr = new Intl.DateTimeFormat("es-CO", {
-				timeZone: "America/Bogota",
-				weekday: "short",
-			}).format(d);
-			const dayNum = new Intl.DateTimeFormat("es-CO", {
-				timeZone: "America/Bogota",
-				day: "numeric",
-			}).format(d);
+	const todayStr = formatDateInTz();
+	const weekNumber = isoWeekNumber(todayStr);
 
-			const cleanWeekday = weekdayStr.replace(/\./g, "");
-			days.push({
-				label: `${cleanWeekday.charAt(0).toUpperCase() + cleanWeekday.slice(1)} ${dayNum}`,
-				isActive: i === 0,
-			});
+	const weekDays = Array.from({ length: 5 }, (_, idx) => {
+		const offset = idx - 2;
+		const date = addDaysToDateStr(todayStr, offset);
+		return {
+			date,
+			label: `${SHORT_WEEKDAYS[weekdayOfDateStr(date)]} ${Number(date.slice(8, 10))}`,
+			isActive: offset === 0,
+		};
+	});
+
+	const currentHour = Number(
+		new Intl.DateTimeFormat("en-GB", {
+			timeZone: "America/Bogota",
+			hour: "2-digit",
+			hour12: false,
+		}).format(new Date()),
+	);
+
+	const greeting =
+		currentHour < 12
+			? "Buenos días"
+			: currentHour < 19
+				? "Buenas tardes"
+				: "Buenas noches";
+
+	const focusModeLabel =
+		currentHour < 12
+			? "Modo enfoque matutino"
+			: currentHour < 19
+				? "Modo enfoque vespertino"
+				: "Modo enfoque nocturno";
+
+	const plural = (n: number, one: string, many: string) =>
+		n === 1 ? one : many;
+
+	const pomodoroStatus = $derived(
+		pomodoro.awaitingAck
+			? pomodoro.phase === "focus"
+				? "¡Sesión de enfoque terminada!"
+				: "¡Descanso terminado!"
+			: pomodoro.running
+				? pomodoro.phase === "focus"
+					? "Enfocado · sesión en curso"
+					: "En descanso"
+				: pomodoro.phase === "break"
+					? "Descanso listo para iniciar"
+					: "Tiempo de lectura o introspección",
+	);
+
+	/** true si el ciclo actual ya avanzó (pausado a mitad de camino). */
+	const pomodoroPaused = $derived(
+		!pomodoro.running &&
+			!pomodoro.awaitingAck &&
+			pomodoro.remainingMs > 0 &&
+			pomodoro.remainingMs <
+				(pomodoro.phase === "focus" ? FOCUS_MS : BREAK_MS),
+	);
+
+	const togglePomodoroFromHome = () => {
+		if (pomodoro.awaitingAck) {
+			pomodoroUI.isMaximized = true;
+			return;
 		}
-		return days;
-	});
-
-	const greeting = $derived.by(() => {
-		const hour = Number(
-			new Intl.DateTimeFormat("en-GB", {
-				timeZone: "America/Bogota",
-				hour: "2-digit",
-				hour12: false,
-			}).format(new Date()),
-		);
-
-		if (hour < 12) return "Buenos días";
-		if (hour < 19) return "Buenas tardes";
-		return "Buenas noches";
-	});
+		if (pomodoro.running) pausePomodoro();
+		else startPomodoro();
+	};
 
 	const totalCount = $derived(pendingCount + completedCount);
 	const progress = $derived(
@@ -238,18 +289,20 @@
 				logsResult,
 			] = await Promise.all([
 				supabase.auth.getSession(),
+				// Misma regla que /tareas/hoy: cuenta por date, o por end_date si no hay date
 				supabase
 					.from("tasks")
 					.select("id, is_completed")
-					.eq("date", today),
+					.or(`date.eq.${today},and(date.is.null,end_date.eq.${today})`),
 				supabase
 					.from("habits")
-					.select("id, name, weekdays, icon")
+					.select("id, name, weekdays, icon, tag")
 					.order("created_at", { ascending: true }),
 				supabase
 					.from("habit_logs")
-					.select("habit_id")
-					.eq("date", today),
+					.select("habit_id, date")
+					.gte("date", addDaysToDateStr(today, -STREAK_LOOKBACK_DAYS))
+					.lte("date", today),
 			]);
 
 			userName = resolveDisplayName(
@@ -273,7 +326,7 @@
 			let habitsResult: any = habitsWithIcon;
 			if (
 				habitsResult.error &&
-				/icon/i.test(habitsResult.error.message)
+				/icon|tag|schema cache/i.test(habitsResult.error.message)
 			) {
 				habitsResult = await supabase
 					.from("habits")
@@ -290,29 +343,38 @@
 				}
 				todayHabits = [];
 			} else {
-				const doneIds = new Set(
-					(logsResult.data ?? []).map((row) => row.habit_id),
-				);
+				if (logsResult.error) {
+					console.warn(
+						"Error al cargar registros de hábitos:",
+						logsResult.error.message,
+					);
+				}
+				const datesByHabit = new Map<number, Set<string>>();
+				for (const row of logsResult.data ?? []) {
+					const day = String(row.date).slice(0, 10);
+					let set = datesByHabit.get(row.habit_id);
+					if (!set) {
+						set = new Set();
+						datesByHabit.set(row.habit_id, set);
+					}
+					set.add(day);
+				}
 				todayHabits = (habitsResult.data ?? [])
-					.map((h: any, i: number) => {
-						const mockTags = [
-							"Vitalidad",
-							"Espiritual",
-							"Planificación",
-							"Desarrollo",
-						];
-						const tag = mockTags[i % mockTags.length];
-						const streak = Math.floor(Math.random() * 30) + 1;
+					.map((h: any) => {
+						const weekdays = normalizeWeekdays(h.weekdays);
+						const doneDates: Set<string> =
+							datesByHabit.get(h.id) ?? new Set();
 						return {
 							id: h.id,
 							name: h.name,
-							weekdays: normalizeWeekdays(h.weekdays),
+							weekdays,
 							icon: normalizeHabitIcon(
 								(h as { icon?: string }).icon,
 							),
-							done: doneIds.has(h.id),
-							streak,
-							tag,
+							done: doneDates.has(today),
+							streak: computeHabitStreak(weekdays, doneDates, today),
+							tag: (h as { tag?: string | null }).tag || "General",
+							doneDates,
 						};
 					})
 					.filter((h: any) => habitIsScheduledOn(h, weekday));
@@ -332,11 +394,20 @@
 		if (!supabase || habitToggleBusy === habit.id) return;
 
 		const previous = habit.done;
-		habit.done = !habit.done;
-		todayHabits = [...todayHabits];
-		habitToggleBusy = habit.id;
-
 		const today = formatDateInTz();
+		const applyDone = (done: boolean) => {
+			habit.done = done;
+			if (done) habit.doneDates.add(today);
+			else habit.doneDates.delete(today);
+			habit.streak = computeHabitStreak(
+				habit.weekdays,
+				habit.doneDates,
+				today,
+			);
+			todayHabits = [...todayHabits];
+		};
+		applyDone(!previous);
+		habitToggleBusy = habit.id;
 
 		try {
 			if (previous) {
@@ -346,8 +417,8 @@
 					.eq("habit_id", habit.id)
 					.eq("date", today);
 				if (error) {
-					habit.done = previous;
-					todayHabits = [...todayHabits];
+					console.error("Error al actualizar hábito:", error);
+					applyDone(previous);
 				}
 			} else {
 				const { error } = await supabase.from("habit_logs").insert({
@@ -355,8 +426,8 @@
 					date: today,
 				});
 				if (error) {
-					habit.done = previous;
-					todayHabits = [...todayHabits];
+					console.error("Error al actualizar hábito:", error);
+					applyDone(previous);
 				}
 			}
 		} finally {
@@ -364,16 +435,11 @@
 		}
 	};
 
-	onMount(() => {
-		loadTodaySummary();
-		loadDailyVerse();
-	});
-
-	afterNavigate(({ from }) => {
-		if (from) {
-			loadTodaySummary({ silent: true });
-			loadDailyVerse({ silent: true });
-		}
+	// afterNavigate también corre al montar el componente: una sola carga por visita.
+	afterNavigate(() => {
+		const silent = hasLoaded;
+		loadTodaySummary({ silent });
+		loadDailyVerse({ silent });
 	});
 </script>
 
@@ -401,7 +467,7 @@
 					</h2>
 					<span
 						class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-surface-elevated text-brand-accent"
-						>Semana 37</span
+						>Semana {weekNumber}</span
 					>
 				</div>
 				<p class="text-xs text-brand-text-muted mt-1">
@@ -413,14 +479,19 @@
 		<div
 			class="hidden lg:flex items-center gap-1 text-xs font-medium bg-brand-surface rounded-full p-1 border border-brand-divider"
 		>
-			{#each weekDays as wd}
-				<span
-					class="px-4 py-2 rounded-full cursor-pointer transition-colors {wd.isActive
+			{#each weekDays as wd (wd.date)}
+				<a
+					href={wd.isActive
+						? "/tareas/hoy"
+						: `/tareas/hoy?fecha=${wd.date}`}
+					title="Ver tareas del {wd.label}"
+					aria-current={wd.isActive ? "date" : undefined}
+					class="px-4 py-2 rounded-full transition-colors {wd.isActive
 						? 'bg-brand-accent text-brand-bg font-bold'
 						: 'text-brand-text-muted hover:text-brand-text'}"
 				>
 					{wd.label}
-				</span>
+				</a>
 			{/each}
 		</div>
 	</header>
@@ -450,7 +521,7 @@
 							></div>
 							<span
 								class="text-[11px] text-brand-text-muted uppercase tracking-wider font-semibold"
-								>Modo enfoque nocturno</span
+								>{focusModeLabel}</span
 							>
 						</div>
 						<h2
@@ -466,7 +537,7 @@
 						</p>
 
 						<div
-							class="flex items-center gap-4 text-xs font-medium mb-3"
+							class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium mb-3"
 						>
 							<div class="flex items-center gap-1.5">
 								<span
@@ -475,7 +546,8 @@
 								<span class="text-brand-text"
 									><span class="font-bold"
 										>{pendingCount}</span
-									> pendientes</span
+									>
+									{plural(pendingCount, "pendiente", "pendientes")}</span
 								>
 							</div>
 							<span class="text-brand-divider">·</span>
@@ -486,12 +558,14 @@
 								<span class="text-brand-text"
 									><span class="font-bold"
 										>{completedCount}</span
-									> completadas</span
+									>
+									{plural(completedCount, "completada", "completadas")}</span
 								>
 							</div>
 							<span class="text-brand-divider">·</span>
 							<span class="text-brand-text-muted"
-								>Total {totalCount} tareas para hoy</span
+								>Total {totalCount}
+								{plural(totalCount, "tarea", "tareas")} para hoy</span
 							>
 						</div>
 
@@ -521,7 +595,7 @@
 						Ver tareas de hoy
 					</a>
 					<a
-						href="/tareas/hoy?fecha={addLocalDays(formatDateInTz(), 1)}"
+						href="/tareas/hoy?fecha={addDaysToDateStr(todayStr, 1)}"
 						class="flex-[0.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3.5 rounded-xl hover:bg-brand-bg transition-colors"
 					>
 						<span class="text-brand-text-muted">+</span> Planificar día
@@ -622,16 +696,21 @@
 										<div
 											class="flex items-center gap-2 mt-0.5 text-[11px] font-medium text-brand-text-muted"
 										>
-											<span>Cualquier momento</span>
+											<span>{weekdaysLabel(habit.weekdays)}</span>
 											<span class="text-brand-divider"
 												>·</span
 											>
-											<span
-												class="flex items-center gap-1 text-orange-400"
-											>
-												<Flame class="w-3 h-3" /> Racha:
-												{habit.streak} días
-											</span>
+											{#if habit.streak > 0}
+												<span
+													class="flex items-center gap-1 text-orange-400"
+												>
+													<Flame class="w-3 h-3" /> Racha:
+													{habit.streak}
+													{plural(habit.streak, "día", "días")}
+												</span>
+											{:else}
+												<span>Sin racha aún</span>
+											{/if}
 										</div>
 									</div>
 
@@ -745,6 +824,7 @@
 			</section>
 
 			<!-- Foco & Reflexión (Pomodoro) -->
+			{#if sectionPrefs.isVisible("pomodoro") || pomodoro.running || pomodoro.awaitingAck}
 			<section
 				class="rounded-2xl border border-brand-divider bg-brand-surface p-6 text-center flex flex-col items-center justify-center relative shadow-lg"
 			>
@@ -775,18 +855,26 @@
 				<h4
 					class="text-5xl font-black text-brand-text mb-2 tabular-nums tracking-tighter drop-shadow-md relative z-10"
 				>
-					25:00
+					{formatPomodoroTime(pomodoro.remainingMs)}
 				</h4>
 				<p class="text-[11px] text-brand-text-muted mb-8 relative z-10">
-					Tiempo de lectura o introspección
+					{pomodoroStatus}
 				</p>
 
 				<div class="w-full flex gap-3 relative z-10">
 					<button
-						onclick={() => (pomodoroUI.isMaximized = true)}
+						onclick={togglePomodoroFromHome}
 						class="flex-[1.5] flex items-center justify-center gap-2 bg-[#0d1216] border border-brand-divider text-brand-text font-bold py-3 rounded-xl hover:bg-brand-surface-elevated transition-colors"
 					>
-						<Play class="w-4 h-4 fill-brand-text" /> Iniciar
+						{#if pomodoro.awaitingAck}
+							<Check class="w-4 h-4" /> Continuar
+						{:else if pomodoro.running}
+							<Pause class="w-4 h-4 fill-brand-text" /> Pausar
+						{:else if pomodoroPaused}
+							<Play class="w-4 h-4 fill-brand-text" /> Reanudar
+						{:else}
+							<Play class="w-4 h-4 fill-brand-text" /> Iniciar
+						{/if}
 					</button>
 					<button
 						onclick={() => (pomodoroUI.isMaximized = true)}
@@ -796,6 +884,7 @@
 					</button>
 				</div>
 			</section>
+			{/if}
 		</div>
 	</div>
 </div>

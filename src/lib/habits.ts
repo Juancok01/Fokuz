@@ -93,7 +93,70 @@ export const getWeekdayInTz = (date: Date = new Date(), timeZone = COLOMBIA_TZ) 
 	return map[weekday] ?? date.getDay();
 };
 
-export const normalizeWeekdays = (raw: unknown): number[] => {
+/** Suma días a una fecha "YYYY-MM-DD" (aritmética de calendario, sin zona horaria). */
+export const addDaysToDateStr = (day: string, days: number) => {
+	const [y, m, d] = day.split('-').map(Number);
+	const dt = new Date(Date.UTC(y, m - 1, d + days));
+	return dt.toISOString().slice(0, 10);
+};
+
+/** 0 = domingo … 6 = sábado para una fecha "YYYY-MM-DD". */
+export const weekdayOfDateStr = (day: string) => {
+	const [y, m, d] = day.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+};
+
+/** Número de semana ISO-8601 (lunes a domingo) para una fecha "YYYY-MM-DD". */
+export const isoWeekNumber = (day: string = formatDateInTz()) => {
+	const [y, m, d] = day.split('-').map(Number);
+	const dt = new Date(Date.UTC(y, m - 1, d));
+	const isoDay = dt.getUTCDay() || 7;
+	dt.setUTCDate(dt.getUTCDate() + 4 - isoDay); // jueves de esa semana
+	const yearStart = Date.UTC(dt.getUTCFullYear(), 0, 1);
+	return Math.ceil(((dt.getTime() - yearStart) / 86400000 + 1) / 7);
+};
+
+/** Cuántos días hacia atrás se miran para calcular rachas. */
+export const STREAK_LOOKBACK_DAYS = 366;
+
+/**
+ * Racha actual: días programados consecutivos cumplidos, contando hacia atrás desde hoy.
+ * Si hoy está programado y aún no se ha marcado, no rompe la racha (el día sigue abierto).
+ */
+export const computeHabitStreak = (
+	weekdays: number[],
+	doneDates: Set<string>,
+	today: string = formatDateInTz(),
+	lookbackDays = STREAK_LOOKBACK_DAYS
+) => {
+	if (weekdays.length === 0) return 0;
+	let streak = 0;
+	for (let i = 0; i < lookbackDays; i++) {
+		const day = addDaysToDateStr(today, -i);
+		if (!weekdays.includes(weekdayOfDateStr(day))) continue;
+		if (doneDates.has(day)) {
+			streak++;
+		} else if (i !== 0) {
+			break;
+		}
+	}
+	return streak;
+};
+
+/** Texto corto de frecuencia: "Todos los días", "Lunes a viernes", "L · X · V"… */
+export const weekdaysLabel = (weekdays: number[]) => {
+	const set = [...new Set(weekdays)].sort((a, b) => a - b);
+	if (set.length === 7) return 'Todos los días';
+	if (set.join() === '1,2,3,4,5') return 'Lunes a viernes';
+	if (set.join() === '0,6') return 'Fines de semana';
+	if (set.length === 1) return `Solo ${WEEKDAY_NAMES[set[0]].toLowerCase()}`;
+	// Lunes primero, domingo al final
+	return [...set.filter((d) => d !== 0), ...set.filter((d) => d === 0)]
+		.map((d) => WEEKDAY_LABELS[d])
+		.join(' · ');
+};
+
+export const normalizeWeekdays =(raw: unknown): number[] => {
 	if (!Array.isArray(raw)) return [];
 	return [...new Set(raw.map((n) => Number(n)).filter((n) => n >= 0 && n <= 6))].sort(
 		(a, b) => a - b

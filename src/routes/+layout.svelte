@@ -46,6 +46,9 @@
 	<link rel="icon" type="image/png" href="/favicon.png" />
 	<link rel="icon" type="image/png" href={favicon} />
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	{#if !session}
+		<title>Fokuz</title>
+	{/if}
 </svelte:head>
 
 <main

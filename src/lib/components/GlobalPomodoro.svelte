@@ -12,6 +12,7 @@
 		pausePomodoro, pomodoro, pomodoroUI, resetPomodoro, setPomodoroPhase, startPomodoro, setPomodoroTimes
 	} from '$lib/pomodoro.svelte';
 	import { ytPlayer } from '$lib/youtubePlayer.svelte';
+	import { isoWeekNumber } from '$lib/habits';
 
 	// Constants for UI
 	const progress = $derived.by(() => {
@@ -462,7 +463,7 @@
 					<div class="bg-[#0d1216] border border-brand-divider rounded-2xl p-6">
 						<div class="flex items-center justify-between mb-6">
 							<h3 class="flex items-center gap-2 text-xs font-bold text-brand-text tracking-wide"><Activity class="w-4 h-4 text-brand-accent" /> MÉTRICAS DE HOY</h3>
-							<span class="text-[9px] font-bold text-brand-accent bg-brand-accent/10 px-2 py-0.5 rounded-md border border-brand-accent/20">Semana 37</span>
+							<span class="text-[9px] font-bold text-brand-accent bg-brand-accent/10 px-2 py-0.5 rounded-md border border-brand-accent/20">Semana {isoWeekNumber()}</span>
 						</div>
 						
 						<div class="bg-[#070b0e] border border-brand-divider rounded-xl p-4 flex flex-col justify-center items-center text-center shadow-inner mb-6">
