@@ -14,6 +14,7 @@
 		Play,
 		Pause,
 	} from "@lucide/svelte";
+	import { onMount } from "svelte";
 	import { afterNavigate } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
 	import {
@@ -435,11 +436,19 @@
 		}
 	};
 
-	// afterNavigate también corre al montar el componente: una sola carga por visita.
-	afterNavigate(() => {
-		const silent = hasLoaded;
-		loadTodaySummary({ silent });
-		loadDailyVerse({ silent });
+	// Carga inicial al montar. La página se monta después del login (el layout raíz
+	// la renderiza al tener sesión), así que afterNavigate no sirve para la primera carga.
+	onMount(() => {
+		loadTodaySummary();
+		loadDailyVerse();
+	});
+
+	// Navegaciones posteriores dentro de "/" (p. ej. cambio de query): recarga silenciosa.
+	// Se omite mientras la carga inicial está en curso para no consultar dos veces.
+	afterNavigate(({ from }) => {
+		if (!from || !hasLoaded) return;
+		loadTodaySummary({ silent: true });
+		loadDailyVerse({ silent: true });
 	});
 </script>
 
