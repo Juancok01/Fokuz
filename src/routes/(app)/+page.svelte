@@ -294,6 +294,7 @@
 				supabase
 					.from("tasks")
 					.select("id, is_completed")
+					.is("parent_task_id", null)
 					.or(`date.eq.${today},and(date.is.null,end_date.eq.${today})`),
 				supabase
 					.from("habits")

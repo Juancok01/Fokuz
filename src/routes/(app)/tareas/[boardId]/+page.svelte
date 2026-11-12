@@ -52,6 +52,8 @@
 	import { linkPomodoroTask, pomodoroUI } from "$lib/pomodoro.svelte";
 	import {
 		composeDateTime,
+		splitEndFields,
+		hasDeadline,
 		defaultEndTime,
 		findOverlappingTasks,
 		localDayString,
@@ -133,6 +135,7 @@
 			.toISOString()
 			.split("T")[0];
 		return tasks.filter((t) => {
+			if (t.parent_task_id) return false;
 			let targetDate = t.end_date ? t.end_date : t.date;
 			if (targetDate) targetDate = targetDate.substring(0, 10);
 			return targetDate === dateStr;
@@ -969,7 +972,7 @@
 		if (!supabase) return [];
 		const { data } = await supabase
 			.from("tasks")
-			.select("id, title, date, end_date, start_time, end_time");
+			.select("id, title, date, end_date, start_time, end_time, is_completed");
 		return (data ?? []).filter(
 			(task) => (task.date || task.end_date || "").substring(0, 10) === day,
 		);
@@ -980,10 +983,13 @@
 
 		const tag = tags.find((t) => t.id === selectedTagId) ?? null;
 		const start = splitDateTime(newTaskStartDate);
-		const end = splitDateTime(newTaskEndDate);
 		const date = start.date || localDayString();
 		const startTime = start.time || "09:00";
-		const endTime = defaultEndTime(startTime, end.time);
+		const { endDate: newEndDate, endTime } = splitEndFields(
+			date,
+			startTime,
+			newTaskEndDate,
+		);
 
 		if (supabase) {
 			const dayTasks = await getTimedTasksForDay(date);
@@ -1011,7 +1017,7 @@
 			date,
 			start_time: startTime,
 			end_time: endTime,
-			end_date: newTaskEndDate || null,
+			end_date: newEndDate,
 			tag_id: selectedTagId,
 		};
 
@@ -1373,6 +1379,9 @@
 			} else if (task.end_time && task.date) {
 				editingEndDate = composeDateTime(task.date, task.end_time);
 			}
+			openedHadTime = Boolean(task.start_time);
+			openedEditingDate = editingDate;
+			openedEditingEndDate = editingEndDate;
 			editingTagId = task.tag_id ?? getTaskTag(task)?.id ?? null;
 			closeListModals();
 			taskPanel = "menu";
@@ -1680,6 +1689,11 @@
 		}
 	};
 
+	// Valores de fecha mostrados al abrir la tarea (para no inventar horas/fechas al guardar)
+	let openedHadTime = false;
+	let openedEditingDate = "";
+	let openedEditingEndDate = "";
+
 	const saveTaskDetails = async () => {
 		if (selectedTaskId === null) return;
 
@@ -1706,12 +1720,20 @@
 		const nextTag = tags.find((t) => t.id === editingTagId) ?? null;
 
 		const start = splitDateTime(editingDate);
-		const end = splitDateTime(editingEndDate);
 		const date = start.date || editingDate || null;
-		const startTime = start.time || "09:00";
-		const endTime = defaultEndTime(startTime, end.time);
+		// Una tarea sin hora sigue sin hora si el usuario no tocó las fechas
+		const keepUntimed =
+			!openedHadTime &&
+			editingDate === openedEditingDate &&
+			editingEndDate === openedEditingEndDate;
+		const startTime: string | null = keepUntimed ? null : start.time || "09:00";
+		const endFields = startTime
+			? splitEndFields(date ?? "", startTime, editingEndDate)
+			: { endDate: tasks[taskIndex].end_date ?? null, endTime: null };
+		const endTime = endFields.endTime;
+		const endDate = endFields.endDate;
 
-		if (date && supabase) {
+		if (date && startTime && endTime && supabase) {
 			const dayTasks = await getTimedTasksForDay(date);
 			const conflicts = findOverlappingTasks(
 				dayTasks,
@@ -1735,7 +1757,7 @@
 		tasks[taskIndex].date = date;
 		tasks[taskIndex].start_time = startTime;
 		tasks[taskIndex].end_time = endTime;
-		tasks[taskIndex].end_date = editingEndDate || null;
+		tasks[taskIndex].end_date = endDate;
 		selectedTaskTitle = title;
 		taskActionError = "";
 
@@ -1750,7 +1772,7 @@
 					date,
 					start_time: startTime,
 					end_time: endTime,
-					end_date: editingEndDate || null,
+					end_date: endDate,
 				})
 				.eq("id", selectedTaskId);
 			if (error) {
@@ -2040,11 +2062,18 @@
 		pomodoroUI.isMaximized = true;
 	};
 
+	const topLevelTasks = $derived(tasks.filter((t) => !t.parent_task_id));
+	const topLevelCompleted = $derived(
+		topLevelTasks.filter((t) => t.is_completed).length,
+	);
+
 	// --- KANBAN LOGIC ---
 	let kanbanState = $derived.by(() => {
 		const cols: Record<string, any[]> = {};
 		boardLists.forEach((l) => (cols[l.id] = []));
 		tasks.forEach((t) => {
+			// Las subtareas se ven dentro de su tarea padre, no como tarjetas sueltas
+			if (t.parent_task_id) return;
 			// Apply "Solo mías" filter
 			if (filterSharedOnly) {
 				const isMine =
@@ -2215,7 +2244,7 @@
 </script>
 
 <svelte:head>
-	<title>Tablero Tareas · Fokuz</title>
+	<title>{currentBoard?.title ?? "Tablero"} · Fokuz</title>
 </svelte:head>
 
 <div class="flex-1 flex flex-col h-full bg-[#070b0e] overflow-hidden">
@@ -2535,7 +2564,7 @@
 												</span>
 											{/if}
 											<!-- Deadline -->
-											{#if task.end_date}
+											{#if hasDeadline(task)}
 												{@const dStyles =
 													getDeadlineStyles(
 														task.end_date,
@@ -2690,7 +2719,7 @@
 												: 'bg-brand-text-muted'}"
 								></span>
 								<h3 class="text-base font-bold text-brand-text">
-									{col.title}
+									{col.name}
 								</h3>
 								<span
 									class="text-xs font-bold text-brand-text-muted bg-[#0d1216] border border-brand-divider px-2.5 py-0.5 rounded-full"
@@ -2902,13 +2931,15 @@
 		>
 			<span class="flex items-center gap-2 text-brand-text font-bold"
 				><Kanban class="w-3.5 h-3.5 text-brand-text-muted" />
-				{tasks.length} tareas en este tablero</span
+				{topLevelTasks.length}
+				{topLevelTasks.length === 1 ? "tarea" : "tareas"} en este tablero</span
 			>
 			<span class="flex items-center gap-2 text-brand-accent font-bold"
 				><span
 					class="w-1.5 h-1.5 rounded-full bg-brand-accent shadow-[0_0_5px_var(--color-brand-accent)]"
 				></span>
-				{tasks.filter((t) => t.is_completed).length} completadas</span
+				{topLevelCompleted}
+				{topLevelCompleted === 1 ? "completada" : "completadas"}</span
 			>
 		</div>
 	</footer>
@@ -3581,7 +3612,8 @@
 								/> Actividad & Comentarios
 							</h3>
 							<span class="text-xs text-brand-text-muted"
-								>{taskComments.length} comentarios</span
+								>{taskComments.length}
+								{taskComments.length === 1 ? "comentario" : "comentarios"}</span
 							>
 						</div>
 

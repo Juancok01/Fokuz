@@ -39,7 +39,31 @@ export type TimedTask = {
 	start_time?: string | null;
 	end_time?: string | null;
 	is_completed?: boolean;
+	parent_task_id?: number | null;
 };
+
+/**
+ * Normaliza la fecha/hora de fin elegida en el formulario.
+ * Si termina el mismo día que empieza, solo es una hora de fin (end_time) y no una fecha límite;
+ * end_date solo se guarda cuando el fin cae en otro día.
+ */
+export function splitEndFields(
+	startDate: string,
+	startTime: string,
+	endValue?: string | null
+): { endDate: string | null; endTime: string } {
+	const end = splitDateTime(endValue);
+	const endTime = defaultEndTime(startTime, end.time);
+	const endDate = end.date && end.date !== startDate ? end.date : null;
+	return { endDate, endTime };
+}
+
+/** true si la tarea tiene una fecha límite real (distinta del día en que empieza). */
+export function hasDeadline(task: TimedTask): boolean {
+	const end = (task.end_date || '').substring(0, 10);
+	if (!end) return false;
+	return end !== (task.date || '').substring(0, 10);
+}
 
 export function taskTimeLabel(task: TimedTask): string | null {
 	return extractTime(task.start_time) || splitDateTime(task.date).time || splitDateTime(task.end_date).time;
@@ -129,6 +153,8 @@ export function findOverlappingTasks(
 
 	return tasks.filter((task) => {
 		if (ignoreId != null && task.id === ignoreId) return false;
+		// Una tarea completada ya no ocupa su horario
+		if (task.is_completed) return false;
 		if (taskDayValue(task) !== day) return false;
 		const otherStart = taskTimeLabel(task);
 		if (!otherStart) return false;

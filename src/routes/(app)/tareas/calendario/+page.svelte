@@ -60,7 +60,12 @@
 			.sort((a, b) => (taskRangeLabel(a) || '99:99').localeCompare(taskRangeLabel(b) || '99:99'));
 	}
 
-	function nextCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1); }
+	const monthTitle = $derived.by(() => {
+		const month = calendarCurrentMonth.toLocaleDateString('es-ES', { month: 'long' });
+		return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${calendarCurrentMonth.getFullYear()}`;
+	});
+
+	function nextCalMonth() {calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1); }
 	function prevCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() - 1, 1); }
 
 	function openDay(day: Date) {
@@ -73,7 +78,8 @@
 			.from('tasks')
 			.select('*, boards(title, color)');
 		if (!error && data) {
-			tasks = data;
+			// Las subtareas se gestionan dentro de su tarea padre
+			tasks = data.filter((t) => !t.parent_task_id);
 		}
 	}
 
@@ -104,8 +110,8 @@
 	<div class="flex-1 min-h-0 w-full max-w-6xl mx-auto flex flex-col">
 		<!-- Cabecera Mes -->
 		<div class="flex items-center justify-between mb-3 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm shrink-0">
-			<h2 class="text-lg font-bold text-brand-text px-3 capitalize">
-				{calendarCurrentMonth.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
+			<h2 class="text-lg font-bold text-brand-text px-3">
+				{monthTitle}
 			</h2>
 			<div class="flex items-center gap-2">
 				<button class="p-2 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted transition-colors" onclick={prevCalMonth}>

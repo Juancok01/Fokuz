@@ -231,7 +231,8 @@
 			supabase.from('tasks').select('*, boards(title, color)'),
 			supabase.from('boards').select('id, title, color').order('title', { ascending: true })
 		]);
-		if (taskData) tasks = taskData;
+		// Las subtareas se gestionan dentro de su tarea padre
+		if (taskData) tasks = taskData.filter((t) => !t.parent_task_id);
 		if (boardData) boards = boardData;
 		loading = false;
 	}

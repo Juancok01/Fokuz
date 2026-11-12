@@ -413,7 +413,10 @@
 				<AlertTriangle class="w-6 h-6" />
 			</div>
 			<h3 class="text-lg font-bold text-brand-text mb-2">¿Eliminar Tablero?</h3>
-			<p class="text-sm text-brand-text-muted mb-6">Este tablero y todas sus tareas serán eliminados permanentemente y no podrán recuperarse.</p>
+			<p class="text-sm text-brand-text-muted mb-6">
+				<strong class="text-brand-text">«{boards.find((b) => b.id === boardToDelete)?.title ?? 'Tablero'}»</strong>
+				y todas sus tareas serán eliminados permanentemente y no podrán recuperarse.
+			</p>
 			<div class="flex justify-center gap-3 w-full">
 				<button 
 					class="flex-1 px-4 py-2 rounded-xl text-brand-text font-bold bg-[#0d1216] hover:bg-brand-surface-elevated border border-brand-divider transition-colors" 
