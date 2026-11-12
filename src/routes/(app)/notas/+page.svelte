@@ -45,6 +45,7 @@
 		getCleanQuillHtml,
 		guardQuillCodeBlocks,
 		loadNoteHtml,
+		noteHtmlToText,
 		sanitizeNoteHtml,
 	} from "$lib/quill-note-html";
 
@@ -81,7 +82,7 @@
 				(n.title || "")
 					.toLowerCase()
 					.includes(searchQuery.toLowerCase()) ||
-				(n.excerpt || "")
+				noteHtmlToText(n.excerpt || "")
 					.toLowerCase()
 					.includes(searchQuery.toLowerCase())
 			);
@@ -156,22 +157,99 @@
 
 	let currentTime = $state(Date.now());
 
+	// ---------- Guardado ----------
+	// Cada nota editada se marca como "pendiente" con su propio id. El autoguardado guarda
+	// esas notas (no "la que esté abierta"), y también se guarda al cambiar de nota,
+	// al ocultar la pestaña, al salir de la página y al cerrar el navegador.
+	const AUTOSAVE_DELAY_MS = 2000;
+	const dirtyNoteIds = new Set<string>();
 	let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-	function scheduleAutoSave() {
+	let showErrorToast = $state(false);
+	let errorToastMessage = $state("");
+	let currentUserId = $state<string | null>(null);
+
+	function showError(message: string) {
+		errorToastMessage = message;
+		showErrorToast = true;
+		setTimeout(() => (showErrorToast = false), 5000);
+	}
+
+	function scheduleAutoSave(noteId?: string | null) {
+		const id = noteId ?? activeNote?.id;
+		if (!id) return;
+		dirtyNoteIds.add(id);
 		if (autoSaveTimer) clearTimeout(autoSaveTimer);
 		autoSaveTimer = setTimeout(() => {
-			saveActiveNote();
-		}, 30000); // Autoguardado a los 30 segundos
+			flushPendingSaves();
+		}, AUTOSAVE_DELAY_MS);
+	}
+
+	async function saveNoteById(id: string): Promise<boolean> {
+		if (!supabase) return false;
+		const note = notes.find((n) => n.id === id);
+		if (!note) {
+			dirtyNoteIds.delete(id);
+			return true;
+		}
+		dirtyNoteIds.delete(id);
+		const content = sanitizeNoteHtml(note.excerpt || "");
+		const { error } = await supabase
+			.from("notes")
+			.update({ title: note.title || "Sin título", content })
+			.eq("id", id);
+		if (error) {
+			dirtyNoteIds.add(id);
+			showError(`No se pudo guardar «${note.title || "Sin título"}»: ${error.message}`);
+			return false;
+		}
+		note.last_edited_at = Date.now();
+		currentTime = Date.now();
+		return true;
+	}
+
+	async function flushPendingSaves() {
+		if (autoSaveTimer) {
+			clearTimeout(autoSaveTimer);
+			autoSaveTimer = null;
+		}
+		const ids = [...dirtyNoteIds];
+		if (ids.length === 0) return true;
+		const results = await Promise.all(ids.map((id) => saveNoteById(id)));
+		return results.every(Boolean);
+	}
+
+	function handleBeforeUnload(e: BeforeUnloadEvent) {
+		if (dirtyNoteIds.size === 0) return;
+		flushPendingSaves();
+		// Pide confirmación al navegador por si el guardado no alcanza a terminar
+		e.preventDefault();
+		e.returnValue = "";
+	}
+
+	function handleVisibilityChange() {
+		if (document.visibilityState === "hidden") flushPendingSaves();
 	}
 
 	onMount(() => {
 		const interval = setInterval(() => (currentTime = Date.now()), 60000);
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+
+		supabase?.auth.getSession().then(({ data }) => {
+			currentUserId = data.session?.user.id ?? null;
+		});
 
 		Promise.all([loadFolders(), loadContacts()]).then(() => {
 			loadNotes();
 		});
 
-		return () => clearInterval(interval);
+		return () => {
+			clearInterval(interval);
+			window.removeEventListener("beforeunload", handleBeforeUnload);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			// Navegación interna (SPA): guarda lo pendiente antes de salir de Notas
+			flushPendingSaves();
+		};
 	});
 
 	function quillAction(node: HTMLElement) {
@@ -197,10 +275,11 @@
 
 			quillInstance.on("text-change", () => {
 				if (isQuillUpdating || !activeNote) return;
-				const index = notes.findIndex((n) => n.id === activeNote.id);
+				const noteId = activeNote.id;
+				const index = notes.findIndex((n) => n.id === noteId);
 				if (index !== -1) {
 					notes[index].excerpt = getCleanQuillHtml(quillInstance!);
-					scheduleAutoSave();
+					scheduleAutoSave(noteId);
 				}
 			});
 
@@ -229,6 +308,8 @@
 		// Sincronizar contenido SOLO cuando cambia el activeNoteId
 		if (quillInstance && currentNote) {
 			if (lastLoadedNoteId !== currentNote.id) {
+				// Al cambiar de nota se guarda de inmediato lo pendiente (incluida la anterior)
+				if (dirtyNoteIds.size > 0) flushPendingSaves();
 				isQuillUpdating = true;
 				loadNoteHtml(quillInstance, currentExcerpt || "");
 				lastLoadedNoteId = currentNote.id;
@@ -456,45 +537,104 @@
 		if (index !== -1) {
 			const newValue = !notes[index].pinned;
 			notes[index].pinned = newValue;
-			await supabase
+			const { error } = await supabase
 				.from("notes")
 				.update({ pinned: newValue })
 				.eq("id", activeNote.id);
+			if (error) {
+				notes[index].pinned = !newValue;
+				showError(`No se pudo actualizar la nota: ${error.message}`);
+			}
 		}
 	}
 
+	/** Ids de contactos con los que la nota activa ya está compartida. */
+	const activeNoteSharedIds = $derived(
+		new Set<string>(
+			((activeNote?.note_shares ?? []) as { shared_with: string }[]).map(
+				(s) => s.shared_with,
+			),
+		),
+	);
+	const isActiveNoteOwner = $derived(
+		!activeNote || !currentUserId || activeNote.user_id === currentUserId,
+	);
+	const shareChanges = $derived(
+		appContacts.filter((c) => Boolean(c.selected) !== activeNoteSharedIds.has(c.id))
+			.length,
+	);
+
 	function shareActiveNote() {
 		if (!activeNote) return;
+		// Marca como seleccionados los contactos con los que ya está compartida
+		appContacts.forEach((c) => (c.selected = activeNoteSharedIds.has(c.id)));
+		shareSearchQuery = "";
 		showShareModal = true;
 	}
 
 	async function executeShare() {
 		if (!activeNote || !supabase) return;
+		const noteId = activeNote.id;
 
-		const selectedContacts = appContacts.filter((c) => c.selected);
-		if (selectedContacts.length === 0) {
+		const toAdd = appContacts
+			.filter((c) => c.selected && !activeNoteSharedIds.has(c.id))
+			.map((c) => ({ note_id: noteId, shared_with: c.id }));
+		const toRemove = appContacts
+			.filter((c) => !c.selected && activeNoteSharedIds.has(c.id))
+			.map((c) => c.id);
+
+		if (toAdd.length === 0 && toRemove.length === 0) {
 			showShareModal = false;
 			return;
 		}
 
-		const sharesToInsert = selectedContacts.map((c) => ({
-			note_id: activeNote.id,
-			shared_with: c.id,
-		}));
+		if (toAdd.length > 0) {
+			const { error } = await supabase
+				.from("note_shares")
+				.upsert(toAdd, { onConflict: "note_id, shared_with" });
+			if (error) {
+				showError(`No se pudo compartir la nota: ${error.message}`);
+				return;
+			}
+		}
+		if (toRemove.length > 0) {
+			const { error } = await supabase
+				.from("note_shares")
+				.delete()
+				.eq("note_id", noteId)
+				.in("shared_with", toRemove);
+			if (error) {
+				showError(`No se pudo dejar de compartir: ${error.message}`);
+				return;
+			}
+		}
 
+		showShareModal = false;
+		showShareToast = true;
+		setTimeout(() => (showShareToast = false), 3000);
+		appContacts.forEach((c) => (c.selected = false));
+		shareSearchQuery = "";
+		await loadNotes();
+	}
+
+	// ---------- Mover nota a carpeta ----------
+	async function moveActiveNoteToFolder(folderId: string | null) {
+		if (!activeNote || !supabase) return;
+		const noteId = activeNote.id;
+		const index = notes.findIndex((n) => n.id === noteId);
+		if (index === -1) return;
+		const previous = notes[index].folder_id ?? null;
+		if (previous === folderId) return;
+		notes[index].folder_id = folderId;
+		// Mantiene la nota abierta aunque deje de pertenecer a la carpeta que se está viendo
+		activeNoteId = noteId;
 		const { error } = await supabase
-			.from("note_shares")
-			.upsert(sharesToInsert, { onConflict: "note_id, shared_with" });
-
-		if (!error) {
-			showShareModal = false;
-			showShareToast = true;
-			setTimeout(() => (showShareToast = false), 3000);
-			appContacts.forEach((c) => (c.selected = false));
-			shareSearchQuery = "";
-			await loadNotes();
-		} else {
-			alert("Error al compartir la nota");
+			.from("notes")
+			.update({ folder_id: folderId })
+			.eq("id", noteId);
+		if (error) {
+			notes[index].folder_id = previous;
+			showError(`No se pudo mover la nota: ${error.message}`);
 		}
 	}
 
@@ -502,29 +642,19 @@
 		if (!activeNote || !supabase) return;
 
 		const titleEl = document.getElementById("editor-title");
+		const noteId = activeNote.id;
 
-		const index = notes.findIndex((n) => n.id === activeNote.id);
+		const index = notes.findIndex((n) => n.id === noteId);
 		if (index !== -1) {
-			const newTitle = titleEl
+			notes[index].title = titleEl
 				? titleEl.textContent || "Sin título"
 				: activeNote.title;
-			const newExcerpt = quillInstance
-				? getCleanQuillHtml(quillInstance)
-				: sanitizeNoteHtml(activeNote.excerpt || "");
-
-			notes[index].title = newTitle;
-			notes[index].excerpt = newExcerpt;
-			notes[index].last_edited_at = Date.now();
-			currentTime = Date.now();
-
-			await supabase
-				.from("notes")
-				.update({
-					title: newTitle,
-					content: newExcerpt,
-				})
-				.eq("id", activeNote.id);
+			if (quillInstance) notes[index].excerpt = getCleanQuillHtml(quillInstance);
 		}
+
+		dirtyNoteIds.add(noteId);
+		const ok = await flushPendingSaves();
+		if (!ok) return;
 
 		showSaveToast = true;
 		setTimeout(() => (showSaveToast = false), 3000);
@@ -538,10 +668,17 @@
 	async function deleteActiveNote() {
 		if (!activeNote || !supabase) return;
 		const idToDelete = activeNote.id;
+		const previousNotes = notes;
+		dirtyNoteIds.delete(idToDelete);
 		notes = notes.filter((n) => n.id !== idToDelete);
 		activeNoteId = notes[0]?.id || null;
 		showDeleteModal = false;
-		await supabase.from("notes").delete().eq("id", idToDelete);
+		const { error } = await supabase.from("notes").delete().eq("id", idToDelete);
+		if (error) {
+			notes = previousNotes;
+			activeNoteId = idToDelete;
+			showError(`No se pudo eliminar la nota: ${error.message}`);
+		}
 	}
 
 	function openNewNoteModal() {
@@ -562,7 +699,7 @@
 
 		const insertData = {
 			title: newNoteTitle.trim(),
-			content: "Escribe aquí el contenido de tu nueva nota...",
+			content: "",
 			user_id: session.user.id,
 			folder_id: activeFolderId,
 			pinned: false,
@@ -598,7 +735,7 @@
 		const index = notes.findIndex((n) => n.id === activeNote.id);
 		if (index !== -1) {
 			notes[index].title = target.textContent || "Sin título";
-			scheduleAutoSave();
+			scheduleAutoSave(activeNote.id);
 		}
 	}
 </script>
@@ -878,10 +1015,8 @@
 								<p
 									class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-2 mb-3"
 								>
-									{note.excerpt
-										.replace(/<[^>]+>/g, " ")
-										.replace(/\s+/g, " ")
-										.trim() || "Sin contenido"}
+									{noteHtmlToText(note.excerpt || "") ||
+										"Sin contenido"}
 								</p>
 								<div
 									class="flex items-center justify-between text-[10px] font-bold"
@@ -1015,10 +1150,8 @@
 								<p
 									class="text-[11px] text-brand-text-muted leading-relaxed line-clamp-2 mb-3"
 								>
-									{note.excerpt
-										.replace(/<[^>]+>/g, " ")
-										.replace(/\s+/g, " ")
-										.trim() || "Sin contenido"}
+									{noteHtmlToText(note.excerpt || "") ||
+										"Sin contenido"}
 								</p>
 								<div
 									class="flex items-center justify-between text-[10px] font-bold"
@@ -1137,12 +1270,35 @@
 					{/if}
 				</button>
 
-				<div
-					class="hidden sm:flex items-center gap-2 text-xs font-bold text-brand-accent bg-brand-accent/5 px-3 py-1.5 rounded-lg border border-brand-accent/20"
-				>
-					<Folder class="w-4 h-4" />
-					{activeFolderName}
-				</div>
+				{#if activeNote}
+					<label
+						class="hidden sm:flex items-center gap-2 text-xs font-bold text-brand-accent bg-brand-accent/5 px-3 py-1.5 rounded-lg border border-brand-accent/20"
+						title="Mover nota a carpeta"
+					>
+						<Folder class="w-4 h-4 shrink-0" />
+						<span class="sr-only">Carpeta de la nota</span>
+						<select
+							class="bg-transparent text-brand-accent font-bold outline-none cursor-pointer max-w-40"
+							value={activeNote.folder_id ?? ""}
+							onchange={(e) =>
+								moveActiveNoteToFolder(
+									(e.currentTarget as HTMLSelectElement).value || null,
+								)}
+						>
+							<option value="" class="bg-[#0d1216]">Sin carpeta</option>
+							{#each folders as folder (folder.id)}
+								<option value={folder.id} class="bg-[#0d1216]">{folder.name}</option>
+							{/each}
+						</select>
+					</label>
+				{:else}
+					<div
+						class="hidden sm:flex items-center gap-2 text-xs font-bold text-brand-accent bg-brand-accent/5 px-3 py-1.5 rounded-lg border border-brand-accent/20"
+					>
+						<Folder class="w-4 h-4" />
+						{activeFolderName}
+					</div>
+				{/if}
 
 				<div
 					class="h-4 w-px bg-brand-divider mx-2 hidden sm:block"
@@ -1540,6 +1696,17 @@
 	</div>
 {/if}
 
+<!-- Error Toast -->
+{#if showErrorToast}
+	<div
+		role="alert"
+		class="fixed top-10 right-10 max-w-sm bg-red-500 text-white px-6 py-3 rounded-xl shadow-lg z-50 flex items-center gap-3 font-bold text-sm"
+	>
+		<X class="w-5 h-5 shrink-0" strokeWidth={3} />
+		{errorToastMessage}
+	</div>
+{/if}
+
 <!-- Modal Compartir Nota -->
 {#if showShareModal}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1563,7 +1730,11 @@
 					Compartir nota
 				</h3>
 				<p class="text-sm font-medium text-brand-text-muted">
-					Selecciona con quién deseas compartir "{activeNote?.title}".
+					{#if isActiveNoteOwner}
+						Marca o desmarca con quién compartir "{activeNote?.title}".
+					{:else}
+						Esta nota te la compartieron: solo su dueño puede cambiar con quién se comparte.
+					{/if}
 				</p>
 			</div>
 
@@ -1587,7 +1758,9 @@
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
 						class="flex items-center justify-between p-3 rounded-xl hover:bg-brand-surface cursor-pointer transition-colors"
-						onclick={() => (contact.selected = !contact.selected)}
+						onclick={() => {
+							if (isActiveNoteOwner) contact.selected = !contact.selected;
+						}}
 					>
 						<div class="flex items-center gap-3">
 							<div
@@ -1634,7 +1807,7 @@
 				class="px-6 py-4 bg-brand-surface/30 border-t border-brand-divider flex justify-between items-center"
 			>
 				<span class="text-xs font-bold text-brand-text-muted">
-					{appContacts.filter((c) => c.selected).length} seleccionado(s)
+					{appContacts.filter((c) => c.selected).length} con acceso
 				</span>
 				<div class="flex gap-3">
 					<button
@@ -1644,15 +1817,13 @@
 						Cancelar
 					</button>
 					<button
-						class="px-4 py-2 rounded-xl text-sm font-bold text-brand-bg transition-colors shadow-sm {appContacts.some(
-							(c) => c.selected,
-						)
+						class="px-4 py-2 rounded-xl text-sm font-bold text-brand-bg transition-colors shadow-sm {shareChanges > 0 && isActiveNoteOwner
 							? 'bg-brand-accent hover:brightness-110 shadow-[0_0_15px_var(--color-brand-accent-muted)]'
 							: 'bg-[#070b0e] border border-brand-divider text-brand-text-muted cursor-not-allowed'}"
-						disabled={!appContacts.some((c) => c.selected)}
+						disabled={shareChanges === 0 || !isActiveNoteOwner}
 						onclick={executeShare}
 					>
-						Compartir
+						Guardar
 					</button>
 				</div>
 			</div>
