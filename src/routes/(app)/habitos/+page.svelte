@@ -13,13 +13,16 @@
 		TrendingUp,
 		Info
 	} from '@lucide/svelte';
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import HabitIcon from '$lib/components/HabitIcon.svelte';
 	import {
 		HABIT_ICON_OPTIONS,
 		WEEKDAY_LABELS,
 		WEEKDAY_NAMES,
+		STREAK_LOOKBACK_DAYS,
+		addDaysToDateStr,
+		computeHabitStreak,
 		daysInMonth,
 		formatDateInTz,
 		formatDayKey,
@@ -75,11 +78,13 @@
 		}
 	};
 
-	const today = new Date();
-	let viewYear = $state(today.getFullYear());
-	let viewMonth = $state(today.getMonth());
+	/** Hoy en zona Colombia (YYYY-MM-DD); toda la lógica de días usa esta referencia. */
+	const todayStr = formatDateInTz();
+	let viewYear = $state(Number(todayStr.slice(0, 4)));
+	let viewMonth = $state(Number(todayStr.slice(5, 7)) - 1);
 
-	type HabitWithMockData = Habit & { streak: number };
+	/** startKey: día (Colombia) en que se creó el hábito; antes de eso no cuenta como fallo. */
+	type HabitWithMockData = Habit & { streak: number; startKey: string };
 	let habits = $state<HabitWithMockData[]>([]);
 	let customCategories = $state<string[]>([]);
 	let currentFilter = $state('Todos');
@@ -115,10 +120,31 @@
 		'No se pudo guardar. En Supabase → SQL Editor, asegúrate de tener las columnas "icon" y "tag" en la tabla habits y vuelve a intentar.';
 
 	const dayCount = $derived(daysInMonth(viewYear, viewMonth));
-	const todayKey = $derived(formatDateInTz());
+	const todayKey = todayStr;
 	const dayNumbers = $derived(Array.from({ length: dayCount }, (_, i) => i + 1));
 
 	const logKey = (habitId: number, dateStr: string) => `${habitId}:${dateStr}`;
+
+	/**
+	 * Un día cuenta para las estadísticas si está programado, ya llegó (≤ hoy) y el hábito
+	 * ya existía ese día. Si hay un registro hecho, cuenta siempre (datos históricos).
+	 */
+	const isEligibleDay = (habit: HabitWithMockData, dateStr: string, weekday: number) => {
+		if (!habitIsScheduledOn(habit, weekday)) return false;
+		if (dateStr > todayKey) return false;
+		if (dateStr < habit.startKey) return doneKeys.has(logKey(habit.id, dateStr));
+		return true;
+	};
+
+	/** Fechas cumplidas de un hábito (todas las cargadas: mes visible + ventana de racha). */
+	const doneDatesFor = (habitId: number) => {
+		const prefix = `${habitId}:`;
+		const dates = new Set<string>();
+		for (const key of doneKeys) {
+			if (key.startsWith(prefix)) dates.add(key.slice(prefix.length));
+		}
+		return dates;
+	};
 
 	const habitStats = $derived.by(() => {
 		const map = new Map<number, { total: number; done: number; pct: number; health: HabitHealth; streak: number }>();
@@ -126,33 +152,15 @@
 			let total = 0;
 			let done = 0;
 			for (let day = 1; day <= dayCount; day++) {
+				const dateStr = formatDayKey(viewYear, viewMonth, day);
 				const weekday = weekdayForMonthDay(viewYear, viewMonth, day);
-				if (!habitIsScheduledOn(habit, weekday)) continue;
+				if (!isEligibleDay(habit, dateStr, weekday)) continue;
 				total += 1;
-				if (doneKeys.has(logKey(habit.id, formatDayKey(viewYear, viewMonth, day)))) done += 1;
+				if (doneKeys.has(logKey(habit.id, dateStr))) done += 1;
 			}
 			const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-
-			// Calculate max streak in the month
-			let maxStreak = 0;
-			let currentStreak = 0;
-			const isCurrentMonth = (viewYear === today.getFullYear() && viewMonth === today.getMonth());
-			const endDay = isCurrentMonth ? today.getDate() : dayCount;
-
-			for (let d = 1; d <= endDay; d++) {
-				const w = weekdayForMonthDay(viewYear, viewMonth, d);
-				if (habitIsScheduledOn(habit, w)) {
-					if (doneKeys.has(logKey(habit.id, formatDayKey(viewYear, viewMonth, d)))) {
-						currentStreak++;
-						if (currentStreak > maxStreak) {
-							maxStreak = currentStreak;
-						}
-					} else {
-						currentStreak = 0;
-					}
-				}
-			}
-			const streak = maxStreak;
+			// Racha actual (misma regla que Inicio), independiente del mes que se esté viendo
+			const streak = computeHabitStreak(habit.weekdays, doneDatesFor(habit.id), todayKey);
 
 			map.set(habit.id, { total, done, pct, health: habitHealthFromPct(pct, total), streak });
 		}
@@ -174,13 +182,14 @@
 		if (habits.length === 0) return 0;
 		let count = 0;
 		for (let day = 1; day <= dayCount; day++) {
+			const dateStr = formatDayKey(viewYear, viewMonth, day);
 			const weekday = weekdayForMonthDay(viewYear, viewMonth, day);
 			let scheduled = 0;
 			let done = 0;
 			for (const h of habits) {
-				if (habitIsScheduledOn(h, weekday)) {
+				if (isEligibleDay(h, dateStr, weekday)) {
 					scheduled++;
-					if (doneKeys.has(logKey(h.id, formatDayKey(viewYear, viewMonth, day)))) {
+					if (doneKeys.has(logKey(h.id, dateStr))) {
 						done++;
 					}
 				}
@@ -198,7 +207,7 @@
 		
 		for (const habit of habits) {
 			const stats = habitStats.get(habit.id);
-			if (!stats) continue;
+			if (!stats || stats.total === 0) continue;
 			
 			if (!best) {
 				best = { habit, stats };
@@ -226,12 +235,13 @@
 		}
 
 		for (let day = 1; day <= dayCount; day++) {
+			const dateStr = formatDayKey(viewYear, viewMonth, day);
 			const weekday = weekdayForMonthDay(viewYear, viewMonth, day);
 			for (const h of habits) {
-				if (habitIsScheduledOn(h, weekday)) {
+				if (isEligibleDay(h, dateStr, weekday)) {
 					const stats = dayStats.get(weekday)!;
 					stats.total++;
-					if (doneKeys.has(logKey(h.id, formatDayKey(viewYear, viewMonth, day)))) {
+					if (doneKeys.has(logKey(h.id, dateStr))) {
 						stats.done++;
 					}
 				}
@@ -273,7 +283,8 @@
 		
 		for (const habit of habits) {
 			const stats = habitStats.get(habit.id);
-			if (!stats) continue;
+			// Sin días evaluables (p. ej. creado hoy y hoy no toca) no se puede juzgar
+			if (!stats || stats.total === 0) continue;
 			
 			const score = stats.pct * 1000 + stats.streak;
 			
@@ -296,7 +307,14 @@
 		"Un viaje de mil millas comienza con un solo paso.",
 		"Tus hábitos de hoy determinan tu futuro de mañana."
 	];
-	const dailyQuote = $derived(FOKUZ_QUOTES[today.getDate() % FOKUZ_QUOTES.length]);
+	const dailyQuote = FOKUZ_QUOTES[Number(todayStr.slice(8, 10)) % FOKUZ_QUOTES.length];
+
+	const todayLabel = new Intl.DateTimeFormat('es', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'short',
+		timeZone: 'UTC'
+	}).format(new Date(`${todayStr}T12:00:00Z`));
 
 	const selectedStats = $derived(
 		selectedHabit ? (habitStats.get(selectedHabit.id) ?? null) : null
@@ -329,13 +347,17 @@
 				return;
 			}
 
-			const start = formatDayKey(year, month, 1);
-			const end = formatDayKey(year, month, days);
+			const monthStart = formatDayKey(year, month, 1);
+			const monthEnd = formatDayKey(year, month, days);
+			// Además del mes visible, la ventana de racha (último año hasta hoy)
+			const streakStart = addDaysToDateStr(todayKey, -STREAK_LOOKBACK_DAYS);
+			const start = monthStart < streakStart ? monthStart : streakStart;
+			const end = monthEnd > todayKey ? monthEnd : todayKey;
 
 			let [habitsResult, logsResult] = await Promise.all([
 				supabase
 					.from('habits')
-					.select('id, name, weekdays, icon, tag')
+					.select('id, name, weekdays, icon, tag, created_at')
 					.order('created_at', { ascending: true }),
 				supabase.from('habit_logs').select('habit_id, date').gte('date', start).lte('date', end)
 			]);
@@ -344,7 +366,7 @@
 				iconsPersist = false;
 				habitsResult = await supabase
 					.from('habits')
-					.select('id, name, weekdays')
+					.select('id, name, weekdays, created_at')
 					.order('created_at', { ascending: true }) as any;
 			} else if (!habitsResult.error) {
 				iconsPersist = true;
@@ -360,41 +382,21 @@
 			}
 
 			doneKeys = new Set(
-				(logsResult.data ?? []).map((row) => logKey(row.habit_id, row.date as string))
+				(logsResult.data ?? []).map((row) =>
+					logKey(row.habit_id, String(row.date).slice(0, 10))
+				)
 			);
 
 			habits = (habitsResult.data ?? []).map((h) => {
-				const tag = (h as any).tag || 'General';
-				
-				// Calculate streak back from today/end of month
-				let streak = 0;
-				const isCurrentMonth = (viewYear === today.getFullYear() && viewMonth === today.getMonth());
-				const endDay = isCurrentMonth ? today.getDate() : days;
-				
-				for (let d = endDay; d >= 1; d--) {
-					const w = weekdayForMonthDay(viewYear, viewMonth, d);
-					if (habitIsScheduledOn({ weekdays: h.weekdays } as Habit, w)) {
-						if (doneKeys.has(logKey(h.id, formatDayKey(viewYear, viewMonth, d)))) {
-							streak++;
-						} else {
-							// Missed a scheduled day, break streak
-							// Unless it's today and not done yet (just ignore today in that case)
-							if (isCurrentMonth && d === endDay) {
-								continue; 
-							} else {
-								break;
-							}
-						}
-					}
-				}
-
+				const createdAt = (h as { created_at?: string | null }).created_at;
 				return {
 					id: h.id,
 					name: h.name,
 					weekdays: normalizeWeekdays(h.weekdays),
 					icon: normalizeHabitIcon((h as { icon?: string | null }).icon),
-					streak,
-					tag
+					streak: 0,
+					tag: (h as any).tag || 'General',
+					startKey: createdAt ? formatDateInTz(new Date(createdAt)) : '0000-01-01'
 				};
 			});
 			loadedMonthKey = key;
@@ -414,25 +416,37 @@
 		});
 	});
 
-	$effect(() => {
-		const stored = localStorage.getItem('fokuz-categories');
-		if (stored) {
-			try {
-				customCategories = JSON.parse(stored);
-			} catch {}
-		}
-	});
+	const CATEGORIES_KEY = 'fokuz-categories';
 
-	$effect(() => {
-		if (customCategories.length > 0) {
-			localStorage.setItem('fokuz-categories', JSON.stringify(customCategories));
+	// Lectura única al cargar; la escritura es explícita en cada cambio (incluido dejar la lista vacía).
+	if (typeof localStorage !== 'undefined') {
+		try {
+			const stored = JSON.parse(localStorage.getItem(CATEGORIES_KEY) ?? '[]');
+			if (Array.isArray(stored)) customCategories = stored.filter((c) => typeof c === 'string');
+		} catch {
+			/* valor corrupto: se ignora */
 		}
+	}
+
+	const setCustomCategories = (next: string[]) => {
+		customCategories = next;
+		try {
+			localStorage.setItem(CATEGORIES_KEY, JSON.stringify(next));
+		} catch {
+			/* almacenamiento no disponible */
+		}
+	};
+
+	// Si el filtro activo deja de existir (categoría eliminada), vuelve a "Todos"
+	// (se ignora mientras carga, porque los hábitos se vacían al cambiar de mes)
+	$effect(() => {
+		if (!loading && !filters.includes(currentFilter)) currentFilter = 'Todos';
 	});
 
 	const addCategory = () => {
 		const cat = formNewCategory.trim();
 		if (cat && !customCategories.includes(cat)) {
-			customCategories = [...customCategories, cat];
+			setCustomCategories([...customCategories, cat]);
 		}
 		formNewCategory = '';
 		categoryError = '';
@@ -444,7 +458,7 @@
 			categoryError = `No puedes eliminar "${cat}" porque está asignada a uno o más hábitos activos.`;
 			return;
 		}
-		customCategories = customCategories.filter((c) => c !== cat);
+		setCustomCategories(customCategories.filter((c) => c !== cat));
 		categoryError = '';
 	};
 
@@ -465,10 +479,12 @@
 
 		// Update custom categories
 		if (customCategories.includes(oldCat)) {
-			customCategories = customCategories.map((c) => (c === oldCat ? newCat : c));
+			setCustomCategories([...new Set(customCategories.map((c) => (c === oldCat ? newCat : c)))]);
 		} else if (!customCategories.includes(newCat)) {
-			customCategories = [...customCategories, newCat];
+			setCustomCategories([...customCategories, newCat]);
 		}
+		// El filtro activo sigue a la categoría renombrada
+		if (currentFilter === oldCat) currentFilter = newCat;
 
 		// Update local habits
 		const hasHabits = habits.some(h => (h.tag || 'General') === oldCat);
@@ -486,6 +502,26 @@
 
 		editingCategory = null;
 	};
+
+	let matrixScroller = $state<HTMLDivElement | null>(null);
+
+	/** En pantallas angostas, desplaza la matriz para que el día de hoy quede a la vista. */
+	$effect(() => {
+		const el = matrixScroller;
+		if (!el || loading) return;
+		void viewYear;
+		void viewMonth;
+		tick().then(() => {
+			const todayCell = el.querySelector<HTMLElement>('th[data-today="true"]');
+			const sticky = el.querySelector<HTMLElement>('thead th');
+			if (!todayCell || !sticky) {
+				el.scrollLeft = 0;
+				return;
+			}
+			const target = todayCell.offsetLeft - sticky.offsetWidth - todayCell.offsetWidth * 2;
+			el.scrollLeft = Math.max(0, target);
+		});
+	});
 
 	const prevMonth = () => {
 		if (viewMonth === 0) {
@@ -562,7 +598,7 @@
 				const tempId = -Date.now();
 				habits = [
 					...habits,
-					{ id: tempId, name, weekdays: [...formWeekdays], icon: formIcon, streak: 0, tag: formTag.trim() || 'General' }
+					{ id: tempId, name, weekdays: [...formWeekdays], icon: formIcon, streak: 0, tag: formTag.trim() || 'General', startKey: todayKey }
 				];
 				sheetMode = 'closed';
 				return;
@@ -571,7 +607,7 @@
 			const { data, error } = await supabase
 				.from('habits')
 				.insert([{ name, weekdays: formWeekdays, icon: formIcon, tag: formTag.trim() || 'General' }])
-				.select('id, name, weekdays, icon, tag')
+				.select('id, name, weekdays, icon, tag, created_at')
 				.single();
 
 			if (error) {
@@ -593,7 +629,8 @@
 					weekdays: normalizeWeekdays(data.weekdays),
 					icon: normalizeHabitIcon(data.icon),
 					streak: 0,
-					tag: data.tag || formTag.trim() || 'General'
+					tag: data.tag || formTag.trim() || 'General',
+					startKey: data.created_at ? formatDateInTz(new Date(data.created_at)) : todayKey
 				}
 			];
 			sheetMode = 'closed';
@@ -627,7 +664,8 @@
 					weekdays: [...formWeekdays],
 					icon: formIcon,
 					streak: selectedHabit.streak,
-					tag: formTag.trim() || 'General'
+					tag: formTag.trim() || 'General',
+					startKey: selectedHabit.startKey
 				};
 				habits = habits.map((h) => (h.id === habitId ? next : h));
 				selectedHabit = next;
@@ -660,7 +698,8 @@
 				weekdays: normalizeWeekdays(data.weekdays),
 				icon: normalizeHabitIcon(data.icon),
 				streak: selectedHabit.streak,
-				tag: data.tag || formTag.trim() || 'General'
+				tag: data.tag || formTag.trim() || 'General',
+				startKey: selectedHabit.startKey
 			};
 			habits = habits.map((h) => (h.id === habitId ? saved : h));
 			selectedHabit = saved;
@@ -697,7 +736,7 @@
 		}
 	};
 
-	const toggleCell = async (habit: Habit, day: number) => {
+	const toggleCell = async (habit: HabitWithMockData, day: number) => {
 		const weekday = weekdayForMonthDay(viewYear, viewMonth, day);
 		if (!habitIsScheduledOn(habit, weekday)) return;
 		if (habit.id < 0) return;
@@ -705,6 +744,9 @@
 		const dateStr = formatDayKey(viewYear, viewMonth, day);
 		const key = logKey(habit.id, dateStr);
 		if (toggleBusyKey === key) return;
+		// No se pueden registrar días futuros; antes de crear el hábito solo se permite desmarcar
+		if (dateStr > todayKey) return;
+		if (dateStr < habit.startKey && !doneKeys.has(key)) return;
 
 		const wasDone = doneKeys.has(key);
 		const next = new Set(doneKeys);
@@ -801,7 +843,7 @@
 					</div>
 					<div>
 						<p class="text-[9px] text-brand-text-muted uppercase tracking-wider font-semibold">Perfectos</p>
-						<p class="text-xs font-bold text-brand-text">{perfectDays} días {perfectDays === 1 ? 'logrado' : 'logrados'}</p>
+						<p class="text-xs font-bold text-brand-text">{perfectDays} {perfectDays === 1 ? 'día logrado' : 'días logrados'}</p>
 					</div>
 				</div>
 			</div>
@@ -868,11 +910,11 @@
 				</div>
 				<div class="flex items-center gap-2 shrink-0">
 					<span class="w-2 h-2 rounded-full bg-brand-accent shadow-[0_0_8px_var(--color-brand-accent-muted)]"></span>
-					<span class="text-[11px] font-bold text-brand-accent">Día actual: {new Intl.DateTimeFormat('es', { weekday: 'long', day: 'numeric', month: 'short' }).format(today)}</span>
+					<span class="text-[11px] font-bold text-brand-accent">Día actual: {todayLabel}</span>
 				</div>
 			</div>
 
-			<div class="overflow-x-auto custom-scrollbar">
+			<div class="overflow-x-auto custom-scrollbar" bind:this={matrixScroller}>
 				<table class="w-full border-collapse min-w-max">
 					<thead>
 						<tr>
@@ -883,7 +925,7 @@
 								{@const dateStr = formatDayKey(viewYear, viewMonth, day)}
 								{@const weekday = weekdayForMonthDay(viewYear, viewMonth, day)}
 								{@const isToday = dateStr === todayKey}
-								<th class="py-3 px-1 border-b border-brand-divider text-center min-w-9 {isToday ? 'bg-brand-accent border-b-brand-accent' : 'bg-transparent'} transition-colors">
+								<th data-today={isToday} class="py-3 px-1 border-b border-brand-divider text-center min-w-9 {isToday? 'bg-brand-accent border-b-brand-accent' : 'bg-transparent'} transition-colors">
 									<div class="flex flex-col items-center justify-center gap-0.5">
 										<span class="text-[9px] font-bold uppercase {isToday ? 'text-brand-bg/80' : 'text-brand-text-muted/60'}">{WEEKDAY_LABELS[weekday]}</span>
 										<span class="text-sm font-black {isToday ? 'text-brand-bg' : 'text-brand-text'}">{day}</span>
@@ -924,6 +966,8 @@
 												<span class="flex items-center gap-1 text-[10px] font-bold text-orange-500">
 													<Flame class="w-3 h-3" /> {stats?.streak ?? 0} d
 												</span>
+												<span class="sr-only">racha actual
+												</span>
 											</div>
 										</div>
 									</div>
@@ -936,10 +980,24 @@
 									{@const key = logKey(habit.id, dateStr)}
 									{@const done = doneKeys.has(key)}
 									{@const isToday = dateStr === todayKey}
+									{@const isFuture = dateStr > todayKey}
+									{@const beforeStart = dateStr < habit.startKey}
 									{@const isPast = dateStr < todayKey}
-									
+
 									<td class="p-1 align-middle text-center {isToday ? 'bg-brand-surface/80' : ''}">
-										{#if scheduled}
+										{#if scheduled && isFuture}
+											<div
+												class="w-7 h-7 mx-auto rounded-lg flex items-center justify-center border bg-brand-bg/50 border-brand-divider/40"
+												title="Día futuro"
+												aria-hidden="true"
+											>
+												<span class="w-1 h-1 rounded-full bg-brand-text-muted/20"></span>
+											</div>
+										{:else if scheduled && beforeStart && !done}
+											<div class="w-7 h-7 mx-auto flex items-center justify-center" title="Antes de crear el hábito" aria-hidden="true">
+												<div class="w-full h-full rounded-lg bg-brand-surface/20 border border-brand-divider/20"></div>
+											</div>
+										{:else if scheduled}
 											<button
 												type="button"
 												class="w-7 h-7 mx-auto rounded-lg flex items-center justify-center border transition-all active:scale-90 relative overflow-hidden
@@ -1011,9 +1069,10 @@
 					</div>
 					<div class="text-right">
 						<p class="text-sm font-bold text-orange-400 flex items-center justify-end gap-1">
-							<Flame class="w-4 h-4" /> {strongestHabit ? strongestHabit.stats.streak : 0} días
+							<Flame class="w-4 h-4" /> {strongestHabit ? strongestHabit.stats.streak : 0}
+							{strongestHabit?.stats.streak === 1 ? 'día' : 'días'}
 						</p>
-						<p class="text-[10px] font-semibold text-brand-accent mt-0.5">Racha ininterrumpida</p>
+						<p class="text-[10px] font-semibold text-brand-accent mt-0.5">Racha actual</p>
 					</div>
 				</div>
 			</div>
