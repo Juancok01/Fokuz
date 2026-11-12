@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import {
@@ -27,8 +27,12 @@
 	let focusMins = $state(25);
 	let breakMins = $state(5);
 	
+	// Solo debe reaccionar a los minutos elegidos. setPomodoroTimes lee el estado del
+	// temporizador (running/phase); sin untrack, pausar re-ejecutaba el efecto y reiniciaba el tiempo.
 	$effect(() => {
-		setPomodoroTimes(focusMins, breakMins);
+		const focus = focusMins;
+		const brk = breakMins;
+		untrack(() => setPomodoroTimes(focus, brk));
 	});
 	
 	let noiseRain = $state(false);
