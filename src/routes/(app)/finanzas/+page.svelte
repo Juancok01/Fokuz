@@ -4,7 +4,7 @@
 	import { Plus, Wallet, Users, TrendingUp, TrendingDown, ChevronRight } from '@lucide/svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import BoardFormSheet from '$lib/components/finanzas/BoardFormSheet.svelte';
-	import { MONTHS, formatCOP, monthStartISO, type FinanceBoard } from '$lib/finance';
+	import { formatCOP, monthStartISO, type FinanceBoard } from '$lib/finance';
 
 	let boards = $state<FinanceBoard[]>([]);
 	let loading = $state(true);
@@ -12,7 +12,6 @@
 	let showForm = $state(false);
 
 	const now = new Date();
-	const monthLabel = `${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
 
 	async function loadBoards() {
 		if (!supabase) {

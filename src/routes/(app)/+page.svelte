@@ -3,16 +3,12 @@
 		BookOpen,
 		Calendar,
 		Check,
-		Circle,
 		ListChecks,
 		RefreshCw,
 		Flame,
-		Zap,
-		Target,
-		Share2,
 		Bookmark,
 		Play,
-		Pause,
+		Pause
 	} from "@lucide/svelte";
 	import { onMount } from "svelte";
 	import { afterNavigate } from "$app/navigation";

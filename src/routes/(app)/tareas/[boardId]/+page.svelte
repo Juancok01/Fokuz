@@ -9,73 +9,25 @@
 	import KanbanView from "$lib/components/tareas/KanbanView.svelte";
 	import BoardToolbar from "$lib/components/tareas/BoardToolbar.svelte";
 	import {
-		Calendar,
-		GripVertical,
-		CheckCircle2,
-		Circle,
-		Plus,
-		X,
 		AlertTriangle,
-		Trash2,
-		Tag,
-		StickyNote,
-		Share2,
-		ListChecks,
-		List,
-		MoreVertical,
-		ArrowLeft,
-		Settings,
-		Filter,
-		Timer,
-		CheckSquare,
-		Paperclip,
-		MessageSquare,
-		Flame,
-		ChevronDown,
-		Kanban,
-		LayoutList,
-		Zap,
-		ChevronLeft,
-		ChevronRight,
-		Edit2,
-		Clock,
-		Users,
-		ThumbsUp,
-		Lock,
-		AlignLeft,
-		Activity,
-		Check,
-		AlertCircle,
-		AtSign,
+		Kanban
 	} from "@lucide/svelte";
-	import { goto } from "$app/navigation";
 	import { page } from "$app/state";
 	import { untrack } from "svelte";
 	import { supabase } from "$lib/supabaseClient";
-	import { dndzone } from "svelte-dnd-action";
-	import logo from "$lib/assets/Logo_Fokuz.png";
-	import TagSelect from "$lib/components/TagSelect.svelte";
-	import Toast from "$lib/components/Toast.svelte";
-	import DateTimePicker from "$lib/components/DateTimePicker.svelte";
-	import RichTextEditor from "$lib/components/RichTextEditor.svelte";
 	import { linkPomodoroTask, pomodoroUI } from "$lib/pomodoro.svelte";
 	import {
 		composeDateTime,
 		splitEndFields,
-		hasDeadline,
-		defaultEndTime,
 		findOverlappingTasks,
 		localDayString,
 		overlapMessage,
 		splitDateTime,
-		START_TIME_SQL_HINT,
-		taskRangeLabel,
+		START_TIME_SQL_HINT
 	} from "$lib/taskTime";
 	import {
 		buildCalendarDays,
-		formatLocalDate,
-		getDeadlineStyles,
-		tasksOnDate,
+		tasksOnDate
 	} from "$lib/boardUtils";
 
 	import type { Contact, TaskTag } from "$lib/components/tareas/types";
@@ -84,7 +36,6 @@
 	let tasks = $state<any[]>([]);
 	let tags = $state<TaskTag[]>([]);
 	let contacts = $state<Contact[]>([]);
-	let tasksLoading = $state(false);
 	let boardId = $derived(page.params.boardId);
 	let currentBoard = $state<any>(null);
 	let allBoards = $state<any[]>([]);
@@ -128,7 +79,6 @@
 			.order("created_at", { ascending: true });
 		allBoards = boardsData || [];
 	}
-	let tasksRefreshing = $state(false);
 	let tasksFetchId = 0;
 	let loadedDateStr = $state<string | null>(null);
 
@@ -141,16 +91,7 @@
 	let showTaskUpdate = $state(false);
 	let showDeleteTaskConfirm = $state(false);
 	let showTaskOptions = $state(false);
-	let showCalendar = $state(false);
-	let calendarMode = $state<"navigate" | "moveTask">("navigate");
 	let showTags = $state(false);
-	let showFilter = $state(false);
-	let filterTagIds = $state<number[]>([]);
-	let filterSharedWithIds = $state<string[]>([]);
-	let filterSharedOnly = $state(false);
-	let filterHasLists = $state(false);
-	let filterHasNovedad = $state(false);
-	let filterStatus = $state<"all" | "pending" | "completed">("all");
 	let showCrearListaModal = $state(false);
 	let newTaskTitle = $state("");
 	let newTaskStartDate = $state(composeDateTime(localDayString()));
@@ -204,163 +145,9 @@
 	let shareBusyId = $state<string | null>(null);
 	let taskActionError = $state("");
 	let taskActionSuccess = $state("");
-	let showTaskCreatedToast = $state(false);
 
 	const contactLabel = (contact: Contact) =>
 		(contact.nickname || "").trim() || contact.display_name;
-
-	// Variables para el calendario custom
-	let calMonth = $state(initDate.getMonth());
-	let calYear = $state(initDate.getFullYear());
-	let daysWithActiveTasks = $state(new Set<string>());
-
-	const monthNames = [
-		"Enero",
-		"Febrero",
-		"Marzo",
-		"Abril",
-		"Mayo",
-		"Junio",
-		"Julio",
-		"Agosto",
-		"Septiembre",
-		"Octubre",
-		"Noviembre",
-		"Diciembre",
-	];
-
-	let calendarDays = $derived.by(() => {
-		let days = [];
-		const totalDays = new Date(calYear, calMonth + 1, 0).getDate();
-		const firstDay = new Date(calYear, calMonth, 1).getDay(); // 0 = Sunday
-		for (let i = 0; i < firstDay; i++) days.push(null);
-		for (let i = 1; i <= totalDays; i++) days.push(i);
-		return days;
-	});
-
-	const prevMonth = () => {
-		if (calMonth === 0) {
-			calMonth = 11;
-			calYear--;
-		} else calMonth--;
-	};
-
-	const nextMonth = () => {
-		if (calMonth === 11) {
-			calMonth = 0;
-			calYear++;
-		} else calMonth++;
-	};
-
-	const closeCalendar = () => {
-		showCalendar = false;
-		calendarMode = "navigate";
-	};
-
-	const openMoveTaskCalendar = () => {
-		if (selectedTaskId === null) return;
-		showTaskOptions = false;
-		calendarMode = "moveTask";
-		const task = tasks.find((t) => t.id === selectedTaskId);
-		const dateStr =
-			typeof task?.date === "string"
-				? task.date
-				: formatDateString(selectedDate);
-		const [y, m, d] = dateStr.split("-").map(Number);
-		if (y && m && d) {
-			calMonth = m - 1;
-			calYear = y;
-		} else {
-			calMonth = selectedDate.getMonth();
-			calYear = selectedDate.getFullYear();
-		}
-		showCalendar = true;
-	};
-
-	const moveTaskToDate = async (date: Date) => {
-		if (!supabase || selectedTaskId === null) return;
-
-		const taskId = selectedTaskId;
-		const dateStr = formatDateString(date);
-		const previous = tasks;
-		tasks = tasks.filter((t) => t.id !== taskId);
-		closeCalendar();
-		showTaskOptions = false;
-		showTaskUpdate = false;
-
-		const { error } = await supabase
-			.from("tasks")
-			.update({ date: dateStr })
-			.eq("id", taskId);
-
-		if (error) {
-			tasks = previous;
-			taskActionError = error.message;
-		}
-	};
-
-	const selectCalendarDate = async (day: number) => {
-		const d = new Date(calYear, calMonth, day);
-		d.setHours(0, 0, 0, 0);
-
-		if (calendarMode === "moveTask") {
-			await moveTaskToDate(d);
-			return;
-		}
-
-		selectedDate = d;
-		closeCalendar();
-	};
-
-	const formatDayKey = (year: number, month: number, day: number) => {
-		const m = String(month + 1).padStart(2, "0");
-		const d = String(day).padStart(2, "0");
-		return `${year}-${m}-${d}`;
-	};
-
-	const fetchActiveTaskDays = async () => {
-		if (!supabase) {
-			daysWithActiveTasks = new Set();
-			return;
-		}
-
-		const start = formatDayKey(calYear, calMonth, 1);
-		const lastDay = new Date(calYear, calMonth + 1, 0).getDate();
-		const end = formatDayKey(calYear, calMonth, lastDay);
-
-		const { data, error } = await supabase
-			.from("tasks")
-			.select("date")
-			.eq("is_completed", false)
-			.gte("date", start)
-			.lte("date", end);
-
-		if (error) {
-			console.warn(
-				"Error al cargar días con tareas activas:",
-				error.message,
-			);
-			return;
-		}
-
-		daysWithActiveTasks = new Set((data ?? []).map((t) => t.date));
-	};
-
-	// Sincronizar el calendario con la fecha seleccionada al abrir (solo navegación)
-	$effect(() => {
-		if (showCalendar && calendarMode === "navigate") {
-			calMonth = selectedDate.getMonth();
-			calYear = selectedDate.getFullYear();
-		}
-	});
-
-	// Marcar días del mes visible que tienen tareas sin completar
-	$effect(() => {
-		if (!showCalendar) return;
-		void calMonth;
-		void calYear;
-		fetchActiveTaskDays();
-	});
 
 	// Funciones auxiliares
 	const formatDateString = (d: Date) => {
@@ -442,20 +229,8 @@
 		});
 	};
 
-	const normalizeSharedTasks = (sharedData: unknown): any[] => {
-		if (Array.isArray(sharedData)) return sharedData;
-		if (typeof sharedData === "string") {
-			try {
-				const parsed = JSON.parse(sharedData);
-				return Array.isArray(parsed) ? parsed : [];
-			} catch {
-				return [];
-			}
-		}
-		return [];
-	};
-
-	const fetchSharedTasksFallback = async (dateStr: string) => {
+	/** Tareas de este tablero que otros usuarios me compartieron (RLS permite leerlas). */
+	const fetchSharedTasks = async () => {
 		if (!supabase) return [] as any[];
 
 		const {
@@ -486,7 +261,7 @@
 
 		if (error) {
 			console.warn(
-				"Error al cargar tareas compartidas (fallback):",
+				"Error al cargar tareas compartidas:",
 				error.message,
 			);
 			return [];
@@ -516,174 +291,144 @@
 	const fetchTasks = async () => {
 		const requestId = ++tasksFetchId;
 		const dateStr = formatDateString(selectedDate);
-		const keepStale = loadedDateStr === dateStr && tasks.length > 0;
+		if (loadedDateStr !== dateStr) tasks = [];
 
-		if (keepStale) {
-			tasksRefreshing = true;
-		} else {
-			tasksLoading = true;
-			if (loadedDateStr !== dateStr) tasks = [];
+		if (!supabase) {
+			console.warn(
+				"Supabase no está configurado. Las tareas no se pueden cargar.",
+			);
+			if (requestId === tasksFetchId) {
+				tasks = [];
+				loadedDateStr = dateStr;
+			}
+			return;
 		}
 
-		try {
-			if (!supabase) {
-				console.warn(
-					"Supabase no está configurado. Las tareas no se pueden cargar.",
-				);
-				if (requestId === tasksFetchId) {
-					tasks = [];
-					loadedDateStr = dateStr;
-				}
-				return;
-			}
+		const [ownResult, sharedList] = await Promise.all([
+			supabase
+				.from("tasks")
+				.select("*, tags(id, name, color)")
+				.eq("board_id", Number(boardId))
+				.order("order_index", { ascending: true }),
+			fetchSharedTasks(),
+		]);
 
-			const [ownResult, sharedResult] = await Promise.all([
-				supabase
-					.from("tasks")
-					.select("*, tags(id, name, color)")
-					.eq("board_id", Number(boardId))
-					.order("order_index", { ascending: true }),
-				/* supabase.rpc('get_shared_tasks_for_date', { target_date: dateStr }) */ {
-					data: [],
-					error: null,
-				},
-			]);
+		if (requestId !== tasksFetchId) return;
+
+		if (ownResult.error)
+			alert("Error al cargar: " + ownResult.error.message);
+
+		let merged = ownResult.data ?? [];
+
+		if (requestId !== tasksFetchId) return;
+
+		const receivedSharedIds = new Set<number>();
+		const existingIds = new Set(merged.map((t) => t.id));
+		for (const shared of sharedList) {
+			if (shared?.id == null) continue;
+			receivedSharedIds.add(shared.id);
+			if (!existingIds.has(shared.id)) {
+				merged = [
+					...merged,
+					{ ...shared, is_shared: true, is_shared_with_me: true },
+				];
+				existingIds.add(shared.id);
+			} else {
+				merged = merged.map((t) =>
+					t.id === shared.id
+						? { ...t, is_shared: true, is_shared_with_me: true }
+						: t,
+				);
+			}
+		}
+
+		// Marcar tareas compartidas y resolver "Compartida con: alias"
+		const taskIds = merged.map((t) => t.id);
+		const taskIdsWithLists = new Set<number>();
+		if (taskIds.length > 0) {
+			const [{ data: shareRows }, { data: listRows }] =
+				await Promise.all([
+					supabase
+						.from("task_shares")
+						.select("task_id, shared_with")
+						.in("task_id", taskIds),
+					supabase
+						.from("task_lists")
+						.select("task_id")
+						.in("task_id", taskIds),
+				]);
 
 			if (requestId !== tasksFetchId) return;
 
-			if (ownResult.error)
-				alert("Error al cargar: " + ownResult.error.message);
-
-			let merged = ownResult.data ?? [];
-
-			let sharedList = normalizeSharedTasks(sharedResult.data);
-			if (sharedResult.error) {
-				console.warn(
-					"Error al cargar tareas compartidas:",
-					(sharedResult.error as any).message,
-				);
-				sharedList = await fetchSharedTasksFallback(dateStr);
-			} else if (sharedList.length === 0) {
-				// Si el RPC no trae nada, intenta por RLS directo (por si el SQL viejo falla)
-				const fallback = await fetchSharedTasksFallback(dateStr);
-				if (fallback.length > 0) sharedList = fallback;
+			for (const row of listRows ?? []) {
+				taskIdsWithLists.add(row.task_id);
 			}
 
-			if (requestId !== tasksFetchId) return;
+			const rows = shareRows ?? [];
+			const sharedOutIds = new Set(rows.map((row) => row.task_id));
+			const sharedUserIds = [
+				...new Set(rows.map((row) => row.shared_with)),
+			];
 
-			const receivedSharedIds = new Set<number>();
-			const existingIds = new Set(merged.map((t) => t.id));
-			for (const shared of sharedList) {
-				if (shared?.id == null) continue;
-				receivedSharedIds.add(shared.id);
-				if (!existingIds.has(shared.id)) {
-					merged = [
-						...merged,
-						{ ...shared, is_shared: true, is_shared_with_me: true },
-					];
-					existingIds.add(shared.id);
-				} else {
-					merged = merged.map((t) =>
-						t.id === shared.id
-							? { ...t, is_shared: true, is_shared_with_me: true }
-							: t,
-					);
-				}
+			const nameByUserId = new Map<string, string>();
+			for (const contact of contacts) {
+				nameByUserId.set(contact.id, contactLabel(contact));
 			}
 
-			// Marcar tareas compartidas y resolver "Compartida con: alias"
-			const taskIds = merged.map((t) => t.id);
-			const taskIdsWithLists = new Set<number>();
-			if (taskIds.length > 0) {
-				const [{ data: shareRows }, { data: listRows }] =
-					await Promise.all([
-						supabase
-							.from("task_shares")
-							.select("task_id, shared_with")
-							.in("task_id", taskIds),
-						supabase
-							.from("task_lists")
-							.select("task_id")
-							.in("task_id", taskIds),
-					]);
+			const missingIds = sharedUserIds.filter(
+				(id) => !nameByUserId.has(id),
+			);
+			if (missingIds.length > 0) {
+				const { data: profiles } = await supabase
+					.from("profiles")
+					.select("id, email, display_name")
+					.in("id", missingIds);
 
 				if (requestId !== tasksFetchId) return;
 
-				for (const row of listRows ?? []) {
-					taskIdsWithLists.add(row.task_id);
-				}
-
-				const rows = shareRows ?? [];
-				const sharedOutIds = new Set(rows.map((row) => row.task_id));
-				const sharedUserIds = [
-					...new Set(rows.map((row) => row.shared_with)),
-				];
-
-				const nameByUserId = new Map<string, string>();
-				for (const contact of contacts) {
-					nameByUserId.set(contact.id, contactLabel(contact));
-				}
-
-				const missingIds = sharedUserIds.filter(
-					(id) => !nameByUserId.has(id),
-				);
-				if (missingIds.length > 0) {
-					const { data: profiles } = await supabase
-						.from("profiles")
-						.select("id, email, display_name")
-						.in("id", missingIds);
-
-					if (requestId !== tasksFetchId) return;
-
-					for (const profile of profiles ?? []) {
-						nameByUserId.set(
-							profile.id,
-							(profile.display_name || "").trim() ||
-								profile.email.split("@")[0],
-						);
-					}
-				}
-
-				const labelsByTask = new Map<number, string[]>();
-				const idsByTask = new Map<number, string[]>();
-				for (const row of rows) {
-					const labels = labelsByTask.get(row.task_id) ?? [];
-					labels.push(
-						nameByUserId.get(row.shared_with) || "contacto",
+				for (const profile of profiles ?? []) {
+					nameByUserId.set(
+						profile.id,
+						(profile.display_name || "").trim() ||
+							profile.email.split("@")[0],
 					);
-					labelsByTask.set(row.task_id, labels);
-
-					const ids = idsByTask.get(row.task_id) ?? [];
-					ids.push(row.shared_with);
-					idsByTask.set(row.task_id, ids);
 				}
-
-				merged = merged.map((t) => {
-					const labels = labelsByTask.get(t.id) ?? [];
-					const sharedIds = idsByTask.get(t.id) ?? [];
-					const isShared =
-						Boolean(t.is_shared) ||
-						receivedSharedIds.has(t.id) ||
-						sharedOutIds.has(t.id);
-					return {
-						...t,
-						is_shared: isShared,
-						shared_with_labels: labels,
-						shared_with_ids: sharedIds,
-						has_lists: taskIdsWithLists.has(t.id),
-					};
-				});
 			}
 
-			if (requestId !== tasksFetchId) return;
-			tasks = merged;
-			loadedDateStr = dateStr;
-		} finally {
-			if (requestId === tasksFetchId) {
-				tasksLoading = false;
-				tasksRefreshing = false;
+			const labelsByTask = new Map<number, string[]>();
+			const idsByTask = new Map<number, string[]>();
+			for (const row of rows) {
+				const labels = labelsByTask.get(row.task_id) ?? [];
+				labels.push(
+					nameByUserId.get(row.shared_with) || "contacto",
+				);
+				labelsByTask.set(row.task_id, labels);
+
+				const ids = idsByTask.get(row.task_id) ?? [];
+				ids.push(row.shared_with);
+				idsByTask.set(row.task_id, ids);
 			}
+
+			merged = merged.map((t) => {
+				const labels = labelsByTask.get(t.id) ?? [];
+				const sharedIds = idsByTask.get(t.id) ?? [];
+				const isShared =
+					Boolean(t.is_shared) ||
+					receivedSharedIds.has(t.id) ||
+					sharedOutIds.has(t.id);
+				return {
+					...t,
+					is_shared: isShared,
+					shared_with_labels: labels,
+					shared_with_ids: sharedIds,
+					has_lists: taskIdsWithLists.has(t.id),
+				};
+			});
 		}
+
+		if (requestId !== tasksFetchId) return;
+		tasks = merged;
+		loadedDateStr = dateStr;
 	};
 
 	const setTaskHasLists = (taskId: number, hasLists: boolean) => {
@@ -696,16 +441,6 @@
 		if (task?.tags && !Array.isArray(task.tags)) return task.tags;
 		if (task?.tag_id) return tags.find((t) => t.id === task.tag_id) ?? null;
 		return null;
-	};
-
-	const sharedWithText = (task: any) => {
-		if (task?.is_shared_with_me) return "Compartida contigo";
-		const labels = (task?.shared_with_labels ?? []) as string[];
-		if (labels.length === 0) return task?.is_shared ? "Compartida" : "";
-		if (labels.length === 1) return `Compartida con: ${labels[0]}`;
-		if (labels.length === 2)
-			return `Compartida con: ${labels[0]} y ${labels[1]}`;
-		return `Compartida con: ${labels[0]} y ${labels.length - 1} más`;
 	};
 
 	const refreshTaskShareLabels = (taskId: number, sharedIds: Set<string>) => {
@@ -832,7 +567,6 @@
 			}
 		}
 
-		if (showCalendar) await fetchActiveTaskDays();
 	};
 
 	const openNewTask = () => {
@@ -978,9 +712,6 @@
 			tasks = tasks.map((t) => (t.id === tempId ? finalTask : t));
 		}
 
-		showTaskCreatedToast = true;
-
-		if (showCalendar) await fetchActiveTaskDays();
 	};
 
 	const loadTaskShares = async (taskId: number) => {
@@ -1335,140 +1066,6 @@
 			}
 		}
 
-		if (showCalendar) await fetchActiveTaskDays();
-	};
-
-	const setDate = (offset: number) => {
-		const d = new Date();
-		d.setDate(d.getDate() + offset);
-		d.setHours(0, 0, 0, 0);
-		selectedDate = d;
-	};
-
-	const isSameDay = (a: Date, b: Date) =>
-		a.getDate() === b.getDate() &&
-		a.getMonth() === b.getMonth() &&
-		a.getFullYear() === b.getFullYear();
-
-	const isToday = (d: Date) => isSameDay(d, new Date());
-
-	const isOffsetDay = (d: Date, offset: number) => {
-		const target = new Date();
-		target.setDate(target.getDate() + offset);
-		target.setHours(0, 0, 0, 0);
-		return isSameDay(d, target);
-	};
-
-	const dayTabClass = (active: boolean) =>
-		`flex-1 py-2.5 rounded-xl text-center transition-colors ${
-			active
-				? "bg-brand-accent text-brand-bg font-semibold"
-				: "text-brand-text-muted hover:text-brand-text"
-		}`;
-
-	// Handlers para el drag and drop
-	const handleDndConsider = (e: any) => {
-		if (hasActiveFilters) return;
-		tasks = e.detail.items;
-	};
-
-	const handleDndFinalize = async (e: any) => {
-		if (hasActiveFilters) return;
-		tasks = e.detail.items;
-		if (supabase) {
-			// Update order_index for all items locally
-			const updates = tasks.map((t, index) => ({
-				id: t.id,
-				title: t.title,
-				is_completed: t.is_completed,
-				date: t.date,
-				order_index: index,
-				novedad: t.novedad,
-				tag_id: t.tag_id ?? null,
-			}));
-			await supabase.from("tasks").upsert(updates);
-		}
-	};
-
-	// Cálculo de progreso
-	let progress = $derived(
-		tasks.length > 0
-			? Math.round(
-					(tasks.filter((t) => t.is_completed).length /
-						tasks.length) *
-						100,
-				)
-			: 0,
-	);
-
-	let hasActiveFilters = $derived(
-		filterStatus !== "all" ||
-			filterTagIds.length > 0 ||
-			filterSharedWithIds.length > 0 ||
-			filterSharedOnly ||
-			filterHasLists ||
-			filterHasNovedad,
-	);
-
-	let filteredTasks = $derived.by(() => {
-		if (!hasActiveFilters) return tasks;
-
-		return tasks.filter((task) => {
-			if (filterStatus === "pending" && task.is_completed) return false;
-			if (filterStatus === "completed" && !task.is_completed)
-				return false;
-
-			if (filterTagIds.length > 0) {
-				const tag = getTaskTag(task);
-				if (!tag || !filterTagIds.includes(tag.id)) return false;
-			}
-
-			if (
-				filterHasNovedad &&
-				!(typeof task.novedad === "string" && task.novedad.trim())
-			) {
-				return false;
-			}
-
-			if (filterHasLists && !task.has_lists) return false;
-
-			if (filterSharedOnly || filterSharedWithIds.length > 0) {
-				if (!task.is_shared) return false;
-				if (filterSharedWithIds.length > 0) {
-					const sharedIds = (task.shared_with_ids ?? []) as string[];
-					if (
-						!filterSharedWithIds.some((id) =>
-							sharedIds.includes(id),
-						)
-					)
-						return false;
-				}
-			}
-
-			return true;
-		});
-	});
-
-	const toggleFilterTag = (tagId: number) => {
-		filterTagIds = filterTagIds.includes(tagId)
-			? filterTagIds.filter((id) => id !== tagId)
-			: [...filterTagIds, tagId];
-	};
-
-	const toggleFilterContact = (contactId: string) => {
-		filterSharedWithIds = filterSharedWithIds.includes(contactId)
-			? filterSharedWithIds.filter((id) => id !== contactId)
-			: [...filterSharedWithIds, contactId];
-		if (filterSharedWithIds.length > 0) filterSharedOnly = true;
-	};
-
-	const clearFilters = () => {
-		filterStatus = "all";
-		filterTagIds = [];
-		filterSharedWithIds = [];
-		filterSharedOnly = false;
-		filterHasLists = false;
-		filterHasNovedad = false;
 	};
 
 	const focusOnSelectedTask = () => {
@@ -1491,14 +1088,6 @@
 		tasks.forEach((t) => {
 			// Las subtareas se ven dentro de su tarea padre, no como tarjetas sueltas
 			if (t.parent_task_id) return;
-			// Apply "Solo mías" filter
-			if (filterSharedOnly) {
-				const isMine =
-					t.is_shared === false ||
-					(t.shared_with_ids && t.shared_with_ids.length > 0);
-				if (!isMine) return; // Super simple heuristic for now
-			}
-
 			let targetList = t.list_id;
 			if (!targetList && boardLists.length > 0)
 				targetList = boardLists[0].id;
@@ -1579,6 +1168,7 @@
 			})
 			.select()
 			.single();
+		if (error) alert("No se pudo crear la columna: " + error.message);
 		if (data) {
 			boardLists = [...boardLists, data];
 			showCrearListaModal = false;

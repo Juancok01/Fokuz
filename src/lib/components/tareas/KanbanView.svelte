@@ -1,9 +1,7 @@
 <script lang="ts">
 	import TaskCard from "$lib/components/tareas/TaskCard.svelte";
 	import type { Contact } from "./types";
-	import { AlertTriangle, CheckCircle2, Circle, Edit2, ListChecks, MoreVertical, Plus, Timer, Trash2 } from "@lucide/svelte";
-	import { formatLocalDate, getDeadlineStyles } from "$lib/boardUtils";
-	import { hasDeadline, taskRangeLabel } from "$lib/taskTime";
+	import { AlertTriangle, Edit2, MoreVertical, Plus, Trash2 } from "@lucide/svelte";
 	import { dndzone } from "svelte-dnd-action";
 	// Props: estado y acciones del tablero ($bindable = este componente las modifica)
 	let {

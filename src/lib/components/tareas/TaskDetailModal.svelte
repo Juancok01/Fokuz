@@ -6,12 +6,9 @@
 	import TaskSubtasks from "$lib/components/tareas/TaskSubtasks.svelte";
 	import TaskChecklists from "$lib/components/tareas/TaskChecklists.svelte";
 	import type { Contact, TaskTag } from "./types";
-	import { Activity, AlertCircle, AlertTriangle, AlignLeft, ArrowLeft, AtSign, Calendar, Check, CheckCircle2, CheckSquare, ChevronDown, ChevronRight, Circle, Clock, Edit2, Kanban, ListChecks, MessageSquare, Paperclip, Plus, Share2, StickyNote, Tag, Trash2, Users, X } from "@lucide/svelte";
-	import { goto } from "$app/navigation";
-	import DateTimePicker from "$lib/components/DateTimePicker.svelte";
+	import { AlertTriangle, AlignLeft, ArrowLeft, Check, CheckCircle2, Circle, Kanban, Share2, Tag, Trash2, X } from "@lucide/svelte";
 	import RichTextEditor from "$lib/components/RichTextEditor.svelte";
 	import TagSelect from "$lib/components/TagSelect.svelte";
-	import { supabase } from "$lib/supabaseClient";
 	// Props: estado y acciones del tablero ($bindable = este componente las modifica)
 	let {
 		setTaskHasLists,

@@ -3,9 +3,27 @@
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import {
-		Timer, Play, Pause, RotateCcw, Coffee, Target, X, ListChecks, Check, Music, Plus, 
-		Trash2, PlayCircle, PauseCircle, SkipForward, Volume2, CloudRain, Wind, Flame,
-		Activity, Zap, LayoutDashboard, Settings2, Minimize2, Maximize2, Sparkles
+		Timer,
+		Play,
+		Pause,
+		RotateCcw,
+		Coffee,
+		Target,
+		X,
+		ListChecks,
+		Check,
+		Music,
+		Plus,
+		Trash2,
+		SkipForward,
+		Volume2,
+		CloudRain,
+		Wind,
+		Flame,
+		Activity,
+		Settings2,
+		Minimize2,
+		Maximize2
 	} from '@lucide/svelte';
 	import {
 		BREAK_MS, FOCUS_MS, MAX_BREAK_MINS, MAX_FOCUS_MINS, MIN_BREAK_MINS, MIN_FOCUS_MINS,
@@ -26,7 +44,6 @@
 		return Math.min(100, Math.max(0, ((total - pomodoro.remainingMs) / total) * 100));
 	});
 
-	const phaseLabel = $derived(pomodoro.phase === 'focus' ? 'Enfoque' : 'Descanso');
 	
 	// Minutos configurados: viven en el store (persisten entre recargas)
 	const focusMins = $derived(pomodoroSettings.focusMins);

@@ -46,7 +46,6 @@
 		formatCOP,
 		monthStartISO,
 		todayISO,
-		txSign,
 		type BoardMember,
 		type FinanceCategory,
 		type FinanceSubcategory,
@@ -61,7 +60,7 @@
 		projectedMonthClose,
 		savingsRatePct,
 		sumByType,
-		txInRange,
+		txInRange
 	} from '$lib/finance';
 
 	type Board = {

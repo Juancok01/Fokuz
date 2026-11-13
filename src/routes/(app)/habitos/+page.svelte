@@ -9,7 +9,6 @@
 		Trash2,
 		X,
 		Flame,
-		Zap,
 		TrendingUp,
 		Info
 	} from '@lucide/svelte';
@@ -97,7 +96,6 @@
 	/** Claves `${habitId}:${YYYY-MM-DD}` */
 	let doneKeys = $state(new Set<string>());
 	let loading = $state(true);
-	let refreshing = $state(false);
 	let fetchId = 0;
 	let loadedMonthKey: string | null = null;
 
@@ -114,7 +112,6 @@
 	let formBusy = $state(false);
 	let toggleBusyKey = $state<string | null>(null);
 	/** false si falta la columna icon o tag en Supabase (SQL 010, 011) */
-	let iconsPersist = $state(true);
 
 	const ICON_SQL_HINT =
 		'No se pudo guardar. En Supabase → SQL Editor, asegúrate de tener las columnas "icon" y "tag" en la tabla habits y vuelve a intentar.';
@@ -316,10 +313,6 @@
 		timeZone: 'UTC'
 	}).format(new Date(`${todayStr}T12:00:00Z`));
 
-	const selectedStats = $derived(
-		selectedHabit ? (habitStats.get(selectedHabit.id) ?? null) : null
-	);
-
 	const loadMonth = async () => {
 		const requestId = ++fetchId;
 		const year = viewYear;
@@ -328,8 +321,7 @@
 		const days = daysInMonth(year, month);
 		const keepStale = loadedMonthKey === key && habits.length > 0;
 
-		if (keepStale) refreshing = true;
-		else {
+		if (!keepStale) {
 			loading = true;
 			if (loadedMonthKey !== key) {
 				habits = [];
@@ -363,13 +355,10 @@
 			]);
 
 			if (habitsResult.error && /icon|tag|schema cache/i.test(habitsResult.error.message)) {
-				iconsPersist = false;
 				habitsResult = await supabase
 					.from('habits')
 					.select('id, name, weekdays, created_at')
 					.order('created_at', { ascending: true }) as any;
-			} else if (!habitsResult.error) {
-				iconsPersist = true;
 			}
 
 			if (requestId !== fetchId) return;
@@ -403,7 +392,6 @@
 		} finally {
 			if (requestId === fetchId) {
 				loading = false;
-				refreshing = false;
 			}
 		}
 	};
@@ -612,7 +600,6 @@
 
 			if (error) {
 				if (/icon|tag|schema cache/i.test(error.message)) {
-					iconsPersist = false;
 					formError = ICON_SQL_HINT;
 				} else {
 					formError = error.message;
@@ -620,7 +607,6 @@
 				return;
 			}
 
-			iconsPersist = true;
 			habits = [
 				...habits,
 				{
@@ -682,7 +668,6 @@
 
 			if (error) {
 				if (/icon|tag|schema cache/i.test(error.message)) {
-					iconsPersist = false;
 					formError = ICON_SQL_HINT;
 				} else {
 					formError = error.message;
@@ -691,7 +676,6 @@
 				return;
 			}
 
-			iconsPersist = true;
 			const saved = {
 				id: data.id,
 				name: data.name,

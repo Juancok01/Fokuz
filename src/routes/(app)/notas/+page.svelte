@@ -3,21 +3,14 @@
 		Plus,
 		Folder,
 		Star,
-		Briefcase,
-		Lightbulb,
-		Tag,
-		Archive,
 		Trash2,
 		Search,
 		CalendarDays,
 		Lock,
 		LayoutGrid,
 		List,
-		ChevronRight,
-		Clock,
 		Timer,
 		Share2,
-		MoreHorizontal,
 		Bold,
 		Italic,
 		Underline,
@@ -35,11 +28,10 @@
 		Table,
 		ListOrdered,
 		Maximize,
-		Minimize,
+		Minimize
 	} from "@lucide/svelte";
-	import { goto } from "$app/navigation";
 	import { supabase } from "$lib/supabaseClient";
-	import { onMount, onDestroy } from "svelte";
+	import { onMount } from "svelte";
 	import { pomodoroUI } from '$lib/pomodoro.svelte';
 	import {
 		getCleanQuillHtml,
@@ -156,7 +148,6 @@
 		"bg-rose-500",
 	];
 
-	let currentTime = $state(Date.now());
 
 	// ---------- Guardado ----------
 	// Cada nota editada se marca como "pendiente" con su propio id. El autoguardado guarda
@@ -193,7 +184,6 @@
 			return false;
 		}
 		note.last_edited_at = Date.now();
-		currentTime = Date.now();
 		return true;
 	}
 
@@ -214,7 +204,6 @@
 	}
 
 	onMount(() => {
-		const interval = setInterval(() => (currentTime = Date.now()), 60000);
 		window.addEventListener("beforeunload", handleBeforeUnload);
 		document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -227,7 +216,6 @@
 		});
 
 		return () => {
-			clearInterval(interval);
 			window.removeEventListener("beforeunload", handleBeforeUnload);
 			document.removeEventListener("visibilitychange", handleVisibilityChange);
 			// Navegación interna (SPA): guarda lo pendiente antes de salir de Notas
@@ -382,6 +370,7 @@
 			.from("note_folders")
 			.select("*")
 			.order("created_at", { ascending: true });
+		if (error) showError(`No se pudieron cargar las carpetas: ${error.message}`);
 
 		if (data) {
 			folders = data;
@@ -394,6 +383,7 @@
 			.from("notes")
 			.select("*, note_shares(shared_with)")
 			.order("updated_at", { ascending: false });
+		if (error) showError(`No se pudieron cargar las notas: ${error.message}`);
 
 		if (data) {
 			notes = data.map((n) => {
@@ -451,6 +441,7 @@
 			.insert({ user_id: session.user.id, name: newFolderName.trim() })
 			.select()
 			.single();
+		if (error) showError(`No se pudo crear la carpeta: ${error.message}`);
 
 		if (data) {
 			folders = [...folders, data];
@@ -693,6 +684,7 @@
 			.insert(insertData)
 			.select()
 			.single();
+		if (error) showError(`No se pudo crear la nota: ${error.message}`);
 		if (data) {
 			const newNote = {
 				...data,
@@ -706,7 +698,6 @@
 			};
 			notes = [newNote, ...notes];
 			activeNoteId = newNote.id;
-			currentTime = Date.now();
 			showNewNoteModal = false;
 		}
 		isCreatingNote = false;
