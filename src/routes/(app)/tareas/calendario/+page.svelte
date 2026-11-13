@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { monthTitle } from '$lib/boardUtils';
 	import { ChevronLeft, ChevronRight, ArrowLeft, Plus } from '@lucide/svelte';
 	import { supabase } from '$lib/supabaseClient';
 	import { goto } from '$app/navigation';
@@ -60,10 +61,7 @@
 			.sort((a, b) => (taskRangeLabel(a) || '99:99').localeCompare(taskRangeLabel(b) || '99:99'));
 	}
 
-	const monthTitle = $derived.by(() => {
-		const month = calendarCurrentMonth.toLocaleDateString('es-ES', { month: 'long' });
-		return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${calendarCurrentMonth.getFullYear()}`;
-	});
+	const monthTitleText = $derived(monthTitle(calendarCurrentMonth));
 
 	function nextCalMonth() {calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() + 1, 1); }
 	function prevCalMonth() { calendarCurrentMonth = new Date(calendarCurrentMonth.getFullYear(), calendarCurrentMonth.getMonth() - 1, 1); }
@@ -111,7 +109,7 @@
 		<!-- Cabecera Mes -->
 		<div class="flex items-center justify-between mb-3 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm shrink-0">
 			<h2 class="text-lg font-bold text-brand-text px-3">
-				{monthTitle}
+				{monthTitleText}
 			</h2>
 			<div class="flex items-center gap-2">
 				<button class="p-2 hover:bg-brand-surface-elevated rounded-lg text-brand-text-muted transition-colors" onclick={prevCalMonth}>

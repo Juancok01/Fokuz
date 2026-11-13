@@ -75,3 +75,11 @@ describe('parseLocalDate', () => {
 		expect(parseLocalDate(null)).toBeNull();
 	});
 });
+
+describe('monthTitle', () => {
+	it('"Noviembre 2026", sin "De" en mayúscula', async () => {
+		const { monthTitle } = await import('./boardUtils');
+		expect(monthTitle(new Date(2026, 10, 1))).toBe('Noviembre 2026');
+		expect(monthTitle(new Date(2027, 0, 15))).toBe('Enero 2027');
+	});
+});

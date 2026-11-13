@@ -22,6 +22,7 @@
 		prevCalMonth: (...args: any[]) => any;
 		showNewTask: boolean;
 	} = $props();
+	import { monthTitle } from "$lib/boardUtils";
 </script>
 
 <!-- Calendar View -->
@@ -34,12 +35,9 @@
 			class="flex items-center justify-between mb-3 bg-[#0d1216] border border-brand-divider p-3 rounded-2xl shadow-sm shrink-0"
 		>
 			<h2
-				class="text-lg font-bold text-brand-text px-3 capitalize"
+				class="text-lg font-bold text-brand-text px-3"
 			>
-				{calendarCurrentMonth.toLocaleDateString("es-ES", {
-					month: "long",
-					year: "numeric",
-				})}
+				{monthTitle(calendarCurrentMonth)}
 			</h2>
 			<div class="flex items-center gap-2">
 				<button

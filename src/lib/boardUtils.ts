@@ -98,3 +98,9 @@ export function getDeadlineStyles(dateStr: string | null | undefined, now: Date 
 	if (diffDays <= 2) return YELLOW;
 	return AMBER;
 }
+
+/** Título del mes: "Noviembre 2026" (sin el "de" que agrega toLocaleDateString). */
+export function monthTitle(date: Date): string {
+	const month = date.toLocaleDateString('es-ES', { month: 'long' });
+	return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${date.getFullYear()}`;
+}
