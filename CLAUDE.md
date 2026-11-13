@@ -99,7 +99,7 @@ Dashboard: Power BI (principal); QuickSight como alternativa nativa de AWS
 | --- | --- |
 | `dim_fecha` | **Conformada:** la comparten todos los hechos. Contiene día, semana ISO, mes, día de la semana y si es fin de semana o festivo en Colombia. |
 | `dim_hora` | Hora del día y franja (madrugada, mañana, tarde, noche). |
-| `dim_habito` | Nombre, ícono, días programados. |
+| `dim_habito` | Nombre, categoría (`tag`), ícono, días programados. |
 | `dim_categoria` | Jerarquía categoría → subcategoría, y si es ingreso o gasto. |
 | `dim_tablero_finanzas` | Tablero financiero, meta de ahorro (`savings_goal_pct`) y presupuesto mensual. |
 | `dim_tablero_tareas` | Tablero y columna (lista) de tareas. |
@@ -126,7 +126,7 @@ La pregunta 8 solo es posible porque `dim_fecha` es una **dimensión conformada*
 | Las tareas anteriores al **13-nov-2026** tienen `created_at` y `completed_at` en `NULL` (fecha desconocida). | Filtrar `created_at IS NOT NULL` para medir duraciones. No inventar fechas. |
 | `focus_sessions` existe desde el **13-nov-2026**. Las interrupciones de menos de 1 minuto no se guardan. | Documentarlo en el dashboard. |
 | `habit_logs` solo guarda los días **cumplidos**. | Los días no cumplidos se derivan: días programados (`habits.weekdays`) desde `habits.created_at` menos los días con log. |
-| Las **categorías de hábitos** solo existen en el navegador (localStorage), no en la base. | Por ahora no se puede agrupar hábitos por categoría. Pendiente en la app. |
+| La **categoría de cada hábito** está en `habits.tag` (texto libre, `'General'` por defecto). Renombrar una categoría sobrescribe `tag` en todos sus hábitos, sin historia. | Agrupar por `tag` en `dim_habito`. Si se necesita la historia de renombres, sale de los snapshots diarios (SCD tipo 2). Las categorías creadas pero sin hábitos solo viven en el navegador y no aportan datos. |
 | Los **presupuestos** solo guardan el valor actual, sin historia. | Los snapshots diarios permiten construir la historia (SCD tipo 2) desde que empiece la extracción. |
 | Los borrados son definitivos (no hay borrado lógico). | Detectarlos comparando snapshots consecutivos. |
 | Las fechas se guardan en UTC y el usuario está en Colombia. | Convertir a `America/Bogota` en la capa clean, antes de derivar el día. |
@@ -158,7 +158,7 @@ El pipeline se construye **a medida que avanza la ruta**, no al final. El dueño
 
 **En la app (fuente de datos)**
 - [x] `tasks.created_at`, `tasks.completed_at` y la tabla `focus_sessions` (migración 033, 13-nov-2026).
-- [ ] Guardar las categorías de hábitos en la base (hoy solo están en el navegador).
+- [ ] (Opcional, solo comodidad) Sincronizar entre dispositivos las categorías de hábitos creadas que aún no tienen hábitos: hoy esa lista vive en el navegador. La categoría de cada hábito ya está en `habits.tag`.
 - [ ] Evaluar `updated_at` en las tablas principales (habilitaría la carga incremental).
 
 **Proyecto de datos**
