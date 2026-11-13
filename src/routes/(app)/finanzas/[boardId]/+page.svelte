@@ -53,7 +53,15 @@
 		type FinanceTransaction,
 		type SpendSlice,
 		type TxType,
-		type WeekBucket
+		type WeekBucket,
+		balanceAt,
+		signedAmount,
+		balanceDeltaPct,
+		pctChange,
+		projectedMonthClose,
+		savingsRatePct,
+		sumByType,
+		txInRange,
 	} from '$lib/finance';
 
 	type Board = {
@@ -113,15 +121,11 @@
 	const memberMap = $derived(new Map(members.map((m) => [m.user_id, m])));
 	const methodMap = new Map(PAYMENT_METHODS.map((m) => [m.id, m]));
 
-	const signed = (t: FinanceTransaction) => txSign(t.type) * Number(t.amount);
-	const sumType = (list: FinanceTransaction[], type: TxType) =>
-		list.reduce((s, t) => (t.type === type ? s + Number(t.amount) : s), 0);
-	const balanceBefore = (iso: string) =>
-		Number(board?.initial_balance ?? 0) + transactions.reduce((s, t) => (t.date < iso ? s + signed(t) : s), 0);
+	// Cálculos de saldo en $lib/finance (probados en finance.test.ts)
+	const sumType = sumByType;
+	const balanceBefore = (iso: string) => balanceAt(board?.initial_balance, transactions, iso);
 
-	const balance = $derived(
-		Number(board?.initial_balance ?? 0) + transactions.reduce((s, t) => s + signed(t), 0)
-	);
+	const balance = $derived(balanceAt(board?.initial_balance, transactions));
 
 	// ---------- Mes seleccionado ----------
 	const today = todayISO();
@@ -133,8 +137,8 @@
 	const isFutureMonth = $derived(monthStart > today);
 	const prevMonthName = $derived(MONTHS_SHORT[(month + 11) % 12]);
 
-	const monthTx = $derived(transactions.filter((t) => t.date >= monthStart && t.date < nextMonthStart));
-	const prevTx = $derived(transactions.filter((t) => t.date >= prevMonthStart && t.date < monthStart));
+	const monthTx = $derived(txInRange(transactions, monthStart, nextMonthStart));
+	const prevTx = $derived(txInRange(transactions, prevMonthStart, monthStart));
 
 	const income = $derived(sumType(monthTx, 'income'));
 	const expense = $derived(sumType(monthTx, 'expense'));
@@ -146,21 +150,19 @@
 
 	const startBalance = $derived(balanceBefore(monthStart));
 	const endBalance = $derived(balanceBefore(nextMonthStart));
-	const balanceDelta = $derived(
-		startBalance !== 0 ? ((endBalance - startBalance) / Math.abs(startBalance)) * 100 : null
-	);
+	const balanceDelta = $derived(balanceDeltaPct(startBalance, endBalance));
 
 	// Cierre estimado: proyecta el gasto diario promedio a todo el mes
-	const projectedClose = $derived.by(() => {
-		if (!isCurrentMonth) return endBalance;
-		const elapsed = Math.max(1, now.getDate());
-		return startBalance + income - saved - (expense / elapsed) * daysInMonth;
-	});
+	const projectedClose = $derived(
+		isCurrentMonth
+			? projectedMonthClose({ startBalance, income, expense, saved, dayOfMonth: now.getDate(), daysInMonth })
+			: endBalance
+	);
 	const closeLabel = $derived(
 		isCurrentMonth ? 'Cierre estimado del mes' : isFutureMonth ? 'Saldo proyectado' : 'Saldo al cierre del mes'
 	);
 
-	const change = (cur: number, prev: number) => (prev > 0 ? ((cur - prev) / prev) * 100 : null);
+	const change = pctChange;
 	// Un mes futuro aún no tiene movimientos: compararlo daría caídas falsas (−100 %)
 	const incomeChange = $derived(isFutureMonth ? null : change(income, prevIncome));
 	const expenseChange = $derived(isFutureMonth ? null : change(expense, prevExpense));
@@ -170,7 +172,7 @@
 	const budgetTone = $derived(budgetPct >= 100 ? 'critical' : budgetPct >= 85 ? 'warning' : 'good');
 
 	const goal = $derived(Number(board?.savings_goal_pct ?? 20));
-	const savingsRate = $derived(income > 0 ? ((income - expense) / income) * 100 : 0);
+	const savingsRate = $derived(savingsRatePct(income, expense));
 	const onTarget = $derived(income > 0 && savingsRate >= goal);
 
 	// ---------- Presupuestos por subcategoría ----------
@@ -521,7 +523,7 @@
 				sub?.name ?? '',
 				t.description ?? '',
 				t.payment_method ? (methodMap.get(t.payment_method)?.label ?? '') : '',
-				signed(t)
+				signedAmount(t)
 			];
 			if (isShared) row.push(t.created_by ? (memberMap.get(t.created_by)?.display_name ?? '') : '');
 			return row;

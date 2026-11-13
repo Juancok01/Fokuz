@@ -190,3 +190,58 @@ export function budgetTone(pct: number): 'good' | 'warning' | 'critical' {
 export function digitsOnly(value: string, max = 12): string {
 	return value.replace(/\D/g, '').replace(/^0+/, '').slice(0, max);
 }
+
+// ---------------------------------------------------------------------------
+// Cálculos de saldo (puros, sin estado: probados en finance.test.ts)
+// ---------------------------------------------------------------------------
+
+type TxLike = Pick<FinanceTransaction, 'type' | 'amount' | 'date'>;
+
+/** Monto con signo sobre el saldo: ingreso suma; gasto y ahorro restan. */
+export const signedAmount = (t: Pick<FinanceTransaction, 'type' | 'amount'>) =>
+	txSign(t.type) * Number(t.amount);
+
+/** Suma de los montos de un tipo de movimiento. */
+export const sumByType = (list: Pick<FinanceTransaction, 'type' | 'amount'>[], type: TxType) =>
+	list.reduce((s, t) => (t.type === type ? s + Number(t.amount) : s), 0);
+
+/**
+ * Saldo = saldo inicial + movimientos con signo.
+ * Con `beforeISO` solo cuenta los movimientos anteriores a esa fecha (saldo al inicio de ese día).
+ */
+export function balanceAt(initialBalance: number | string | null | undefined, list: TxLike[], beforeISO?: string) {
+	const base = Number(initialBalance ?? 0) || 0;
+	return list.reduce((s, t) => (beforeISO === undefined || t.date < beforeISO ? s + signedAmount(t) : s), base);
+}
+
+/** Movimientos con fecha en [startISO, endISO). */
+export const txInRange = <T extends Pick<FinanceTransaction, 'date'>>(list: T[], startISO: string, endISO: string) =>
+	list.filter((t) => t.date >= startISO && t.date < endISO);
+
+/** Variación porcentual frente al período anterior; null si no hay base para comparar. */
+export const pctChange = (current: number, previous: number) =>
+	previous > 0 ? ((current - previous) / previous) * 100 : null;
+
+/** Variación del saldo entre dos momentos; null si el saldo inicial es 0. */
+export const balanceDeltaPct = (start: number, end: number) =>
+	start !== 0 ? ((end - start) / Math.abs(start)) * 100 : null;
+
+/** Capacidad de ahorro: lo que queda de los ingresos tras los gastos, en %. */
+export const savingsRatePct = (income: number, expense: number) =>
+	income > 0 ? ((income - expense) / income) * 100 : 0;
+
+/**
+ * Cierre estimado del mes en curso: proyecta el gasto diario promedio a todo el mes.
+ * Los ahorros ya apartados se descuentan tal cual (no se proyectan).
+ */
+export function projectedMonthClose(opts: {
+	startBalance: number;
+	income: number;
+	expense: number;
+	saved: number;
+	dayOfMonth: number;
+	daysInMonth: number;
+}) {
+	const elapsed = Math.max(1, opts.dayOfMonth);
+	return opts.startBalance + opts.income - opts.saved - (opts.expense / elapsed) * opts.daysInMonth;
+}

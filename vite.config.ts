@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { readFileSync } from 'node:fs';
 
 // Versión de la app tomada de package.json (se muestra en el menú y en Perfil)
@@ -16,5 +16,12 @@ export default defineConfig({
 	],
 	build: {
 		chunkSizeWarningLimit: 2000
+	},
+	test: {
+		// Pruebas unitarias de la lógica (rachas, fechas, saldos, notas, Pomodoro).
+		// Los archivos que necesitan DOM declaran "@vitest-environment jsdom".
+		include: ['src/**/*.test.ts'],
+		environment: 'node',
+		restoreMocks: true
 	}
 });

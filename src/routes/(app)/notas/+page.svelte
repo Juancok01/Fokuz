@@ -48,6 +48,7 @@
 		noteHtmlToText,
 		sanitizeNoteHtml,
 	} from "$lib/quill-note-html";
+	import { createNoteSaveQueue } from "$lib/noteSaveQueue";
 
 	// Quill (imported dynamically to avoid SSR errors)
 	import type Quill from "quill";
@@ -162,8 +163,6 @@
 	// esas notas (no "la que esté abierta"), y también se guarda al cambiar de nota,
 	// al ocultar la pestaña, al salir de la página y al cerrar el navegador.
 	const AUTOSAVE_DELAY_MS = 2000;
-	const dirtyNoteIds = new Set<string>();
-	let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let showErrorToast = $state(false);
 	let errorToastMessage = $state("");
 	let currentUserId = $state<string | null>(null);
@@ -177,28 +176,19 @@
 	function scheduleAutoSave(noteId?: string | null) {
 		const id = noteId ?? activeNote?.id;
 		if (!id) return;
-		dirtyNoteIds.add(id);
-		if (autoSaveTimer) clearTimeout(autoSaveTimer);
-		autoSaveTimer = setTimeout(() => {
-			flushPendingSaves();
-		}, AUTOSAVE_DELAY_MS);
+		saveQueue.schedule(id);
 	}
 
 	async function saveNoteById(id: string): Promise<boolean> {
 		if (!supabase) return false;
 		const note = notes.find((n) => n.id === id);
-		if (!note) {
-			dirtyNoteIds.delete(id);
-			return true;
-		}
-		dirtyNoteIds.delete(id);
+		if (!note) return true;
 		const content = sanitizeNoteHtml(note.excerpt || "");
 		const { error } = await supabase
 			.from("notes")
 			.update({ title: note.title || "Sin título", content })
 			.eq("id", id);
 		if (error) {
-			dirtyNoteIds.add(id);
 			showError(`No se pudo guardar «${note.title || "Sin título"}»: ${error.message}`);
 			return false;
 		}
@@ -207,19 +197,12 @@
 		return true;
 	}
 
-	async function flushPendingSaves() {
-		if (autoSaveTimer) {
-			clearTimeout(autoSaveTimer);
-			autoSaveTimer = null;
-		}
-		const ids = [...dirtyNoteIds];
-		if (ids.length === 0) return true;
-		const results = await Promise.all(ids.map((id) => saveNoteById(id)));
-		return results.every(Boolean);
-	}
+	// La cola (src/lib/noteSaveQueue.ts, con pruebas) reintenta las notas cuyo guardado falló
+	const saveQueue = createNoteSaveQueue((id) => saveNoteById(id), AUTOSAVE_DELAY_MS);
+	const flushPendingSaves = () => saveQueue.flush();
 
 	function handleBeforeUnload(e: BeforeUnloadEvent) {
-		if (dirtyNoteIds.size === 0) return;
+		if (saveQueue.size === 0) return;
 		flushPendingSaves();
 		// Pide confirmación al navegador por si el guardado no alcanza a terminar
 		e.preventDefault();
@@ -309,7 +292,7 @@
 		if (quillInstance && currentNote) {
 			if (lastLoadedNoteId !== currentNote.id) {
 				// Al cambiar de nota se guarda de inmediato lo pendiente (incluida la anterior)
-				if (dirtyNoteIds.size > 0) flushPendingSaves();
+				if (saveQueue.size > 0) flushPendingSaves();
 				isQuillUpdating = true;
 				loadNoteHtml(quillInstance, currentExcerpt || "");
 				lastLoadedNoteId = currentNote.id;
@@ -652,7 +635,7 @@
 			if (quillInstance) notes[index].excerpt = getCleanQuillHtml(quillInstance);
 		}
 
-		dirtyNoteIds.add(noteId);
+		saveQueue.markDirty(noteId);
 		const ok = await flushPendingSaves();
 		if (!ok) return;
 
@@ -669,7 +652,7 @@
 		if (!activeNote || !supabase) return;
 		const idToDelete = activeNote.id;
 		const previousNotes = notes;
-		dirtyNoteIds.delete(idToDelete);
+		saveQueue.discard(idToDelete);
 		notes = notes.filter((n) => n.id !== idToDelete);
 		activeNoteId = notes[0]?.id || null;
 		showDeleteModal = false;
