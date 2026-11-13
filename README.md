@@ -127,19 +127,28 @@ Supabase (Postgres) ──► Extracción diaria ──► S3 (raw) ──► Tr
 
 **Modelo dimensional (Kimball), primer borrador:**
 
-| Tipo | Tabla | Grano |
+| Tabla de hechos | Tipo | Grano: una fila por… |
 | --- | --- | --- |
-| Hecho | `fact_transacciones` | un movimiento financiero |
-| Hecho | `fact_habitos_dia` | un hábito en un día (cumplido o no) |
-| Hecho | `fact_tareas` | una tarea (creada, completada, días que tardó) |
-| Hecho | `fact_sesiones_foco` | una sesión de Pomodoro |
-| Dimensión | `dim_fecha`, `dim_categoria`, `dim_tablero`, `dim_habito` | — |
+| `fact_transacciones` | Transaccional | movimiento financiero |
+| `fact_presupuesto_mes` | Snapshot periódico | subcategoría × mes |
+| `fact_habitos_dia` | Transaccional densa | hábito × día programado (cumplido o no) |
+| `fact_tareas` | Snapshot acumulativo | tarea (creada → fecha límite → completada) |
+| `fact_sesiones_foco` | Transaccional | fase de Pomodoro |
 
-**Preguntas que quiero responder con los datos:**
+Dimensiones: `dim_fecha` (conformada, la comparten todos los hechos), `dim_hora`, `dim_habito`, `dim_categoria`, `dim_tablero_finanzas` y `dim_tablero_tareas`.
 
-- ¿Qué días de la semana cumplo más hábitos?
-- ¿Cuánto tiempo pasa entre que creo una tarea y la completo?
-- ¿Mis semanas de más enfoque coinciden con semanas de menos gasto?
+**Preguntas que el proyecto va a responder:**
+
+1. ¿Qué días de la semana cumplo más mis hábitos y cuáles abandono?
+2. ¿Cuánto tardo en completar una tarea y qué porcentaje termino después de la fecha límite?
+3. ¿Cuántas horas de enfoque real hago por semana y cuántas sesiones interrumpo?
+4. ¿En qué franja del día me enfoco mejor?
+5. ¿En qué categorías gasto más y en cuáles me paso del presupuesto?
+6. ¿Estoy cumpliendo mi meta de ahorro mes a mes?
+7. ¿Las tareas en las que uso Pomodoro se terminan más rápido?
+8. ¿Los días que cumplo mis hábitos también me enfoco más y gasto menos? (cruce de hechos por la dimensión de fecha conformada)
+
+El detalle del diseño (decisiones, métricas de cada pregunta, limitaciones de la fuente y pruebas de calidad) está en [`CLAUDE.md`](CLAUDE.md#proyecto-de-datos).
 
 **Preparación de la fuente (noviembre 2026):** la migración [`033`](supabase/migrations/033_task_timestamps_focus_sessions.sql) agrega `created_at` y `completed_at` a las tareas (un trigger mantiene `completed_at` venga de donde venga el cambio) y la tabla `focus_sessions`, con una fila por fase de Pomodoro, completa o interrumpida. Las tareas anteriores quedan con fecha `NULL` (desconocida) en lugar de fechas inventadas. Si no hay conexión, las sesiones se guardan en una cola local y se envían después, sin duplicados ([`focusSessions.ts`](src/lib/focusSessions.ts)).
 
