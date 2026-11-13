@@ -13,6 +13,23 @@
 
 ---
 
+## Sobre este proyecto
+
+Fokuz es una app que uso a diario y, a la vez, la **fuente de datos de mi proyecto de ingeniería de datos**. Cada hábito marcado, tarea, sesión de enfoque y movimiento financiero queda registrado en Postgres, y esos datos reales alimentarán un pipeline analítico. Más abajo explico cómo: [Siguiente fase](#siguiente-fase-proyecto-de-ingeniería-de-datos).
+
+### Cómo se construyó
+
+La app fue desarrollada **con asistencia de IA** ([Claude Code](https://claude.com/claude-code)). Mi rol fue:
+
+- **Producto:** definir qué debía hacer cada módulo y cómo debía comportarse.
+- **QA:** probar módulo por módulo, encontrar errores y decidir qué corregir y en qué orden.
+- **Seguridad y datos:** revisar quién puede ver qué en la base de datos (RLS) y mantener el esquema sincronizado con producción.
+- **Validación:** confirmar cada cambio en la app en vivo antes de darlo por terminado.
+
+Mi enfoque profesional es la **ingeniería de datos**: la app es el medio y los datos son el objetivo.
+
+---
+
 ## Módulos
 
 | Módulo | Qué hace |
@@ -96,6 +113,37 @@ src/
     └── api/             # Endpoints del servidor
 supabase/migrations/     # Esquema y políticas de seguridad (RLS)
 ```
+
+## Siguiente fase: proyecto de ingeniería de datos
+
+> 🚧 **En construcción.** Este es el plan; el pipeline vivirá en un repositorio aparte.
+
+La base de datos de Fokuz (Postgres en Supabase) es el **sistema transaccional** de origen. El objetivo es construir sobre ella un pipeline analítico de punta a punta:
+
+```
+Supabase (Postgres) ──► Extracción diaria ──► S3 (raw) ──► Transformación ──► Modelo estrella ──► Consultas y dashboards
+                        Python · Airflow                   PySpark · dbt      (Kimball)          Athena · Power BI
+```
+
+**Modelo dimensional (Kimball), primer borrador:**
+
+| Tipo | Tabla | Grano |
+| --- | --- | --- |
+| Hecho | `fact_transacciones` | un movimiento financiero |
+| Hecho | `fact_habitos_dia` | un hábito en un día (cumplido o no) |
+| Hecho | `fact_tareas` | una tarea (creada, completada, días que tardó) |
+| Hecho | `fact_sesiones_foco` | una sesión de Pomodoro |
+| Dimensión | `dim_fecha`, `dim_categoria`, `dim_tablero`, `dim_habito` | — |
+
+**Preguntas que quiero responder con los datos:**
+
+- ¿Qué días de la semana cumplo más hábitos?
+- ¿Cuánto tiempo pasa entre que creo una tarea y la completo?
+- ¿Mis semanas de más enfoque coinciden con semanas de menos gasto?
+
+**Preparación pendiente en la app:** registrar la fecha en que se completa cada tarea (`completed_at`) y guardar cada sesión de Pomodoro en una tabla (`focus_sessions`), para que esos datos se acumulen desde ya.
+
+**Privacidad:** los datos financieros son personales. Lo que se publique del proyecto de datos usará datos sintéticos o anonimizados.
 
 ## Autor
 
