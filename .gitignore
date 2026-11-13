@@ -21,3 +21,9 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Archivos locales que no deben subirse (exportaciones con datos personales y logs)
+Claude outputs/
+gitlog*.txt
+check_output.txt
+*.xlsx

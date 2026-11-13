@@ -34,6 +34,8 @@
 	let originalShared = $state<string[]>([]);
 	let saving = $state(false);
 	let errorMsg = $state('');
+	/** Saldo inicial negativo (p. ej. un tablero que empieza con una deuda) */
+	let initialNegative = $state(false);
 
 	const isEdit = $derived(!!board);
 
@@ -42,7 +44,10 @@
 		title = board?.title ?? '';
 		description = board?.description ?? '';
 		color = board?.color ?? BOARD_COLORS[0];
-		initialDigits = board ? String(Math.max(0, Math.round(Number(board.initial_balance) || 0))) : '';
+		// Antes se forzaba a ≥ 0 y editar un tablero con saldo negativo lo dejaba en 0
+		const initial = Math.round(Number(board?.initial_balance) || 0);
+		initialNegative = initial < 0;
+		initialDigits = board && initial !== 0 ? String(Math.abs(initial)) : '';
 		errorMsg = '';
 		sharedWith = [];
 		originalShared = [];
@@ -107,7 +112,7 @@
 			title: name,
 			description: description.trim() || null,
 			color,
-			initial_balance: Number(initialDigits || 0)
+			initial_balance: (initialNegative ? -1 : 1) * Number(initialDigits || 0)
 		};
 		let boardId = board?.id ?? null;
 
@@ -194,6 +199,16 @@
 
 			<label for="fb-initial" class="block text-xs font-bold text-brand-text-muted tracking-wider uppercase mb-2">Saldo inicial</label>
 			<div class="flex items-center bg-brand-bg rounded-xl px-4 mb-4 focus-within:ring-2 focus-within:ring-brand-accent/30">
+				<button
+					type="button"
+					class="mr-2 w-8 h-8 rounded-lg font-black text-lg leading-none border transition-colors {initialNegative
+						? 'text-red-400 border-red-400/40 bg-red-500/10'
+						: 'text-brand-text-muted border-brand-divider'}"
+					onclick={() => (initialNegative = !initialNegative)}
+					title={initialNegative ? 'Saldo negativo (deuda). Toca para cambiar a positivo' : 'Saldo positivo. Toca para registrar una deuda'}
+					aria-label={initialNegative ? 'Saldo inicial negativo' : 'Saldo inicial positivo'}
+					aria-pressed={initialNegative}
+				>{initialNegative ? '−' : '+'}</button>
 				<span class="text-brand-text-muted mr-2">$</span>
 				<input
 					id="fb-initial"

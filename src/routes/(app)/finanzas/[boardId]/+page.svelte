@@ -161,8 +161,9 @@
 	);
 
 	const change = (cur: number, prev: number) => (prev > 0 ? ((cur - prev) / prev) * 100 : null);
-	const incomeChange = $derived(change(income, prevIncome));
-	const expenseChange = $derived(change(expense, prevExpense));
+	// Un mes futuro aún no tiene movimientos: compararlo daría caídas falsas (−100 %)
+	const incomeChange = $derived(isFutureMonth ? null : change(income, prevIncome));
+	const expenseChange = $derived(isFutureMonth ? null : change(expense, prevExpense));
 
 	const budget = $derived(Number(board?.monthly_budget ?? 0));
 	const budgetPct = $derived(budget > 0 ? (expense / budget) * 100 : 0);
@@ -402,16 +403,30 @@
 		if (!error) await loadCategories();
 	}
 
+	/** Supabase devuelve como máximo 1000 filas por consulta: se pide por páginas hasta traerlas todas. */
+	const TX_PAGE_SIZE = 1000;
+
 	async function loadTransactions() {
 		if (!supabase) return;
-		const { data, error } = await supabase
-			.from('finance_transactions')
-			.select('id, board_id, category_id, subcategory_id, amount, type, description, date, payment_method, created_by, created_at')
-			.eq('board_id', boardId)
-			.order('date', { ascending: false })
-			.order('created_at', { ascending: false });
-		if (error) loadError = error.message;
-		transactions = (data ?? []) as FinanceTransaction[];
+		const all: FinanceTransaction[] = [];
+		for (let from = 0; ; from += TX_PAGE_SIZE) {
+			const { data, error } = await supabase
+				.from('finance_transactions')
+				.select('id, board_id, category_id, subcategory_id, amount, type, description, date, payment_method, created_by, created_at')
+				.eq('board_id', boardId)
+				.order('date', { ascending: false })
+				.order('created_at', { ascending: false })
+				.order('id', { ascending: false })
+				.range(from, from + TX_PAGE_SIZE - 1);
+			if (error) {
+				loadError = error.message;
+				break;
+			}
+			const page = (data ?? []) as FinanceTransaction[];
+			all.push(...page);
+			if (page.length < TX_PAGE_SIZE) break;
+		}
+		transactions = all;
 	}
 
 	async function loadMembers() {
@@ -606,7 +621,7 @@
 </script>
 
 <svelte:head>
-	<title>{board?.title ?? 'Tablero'} · Finanzas · Fokuz</title>
+	<title>{board?.title ?? 'Finanzas'} · Fokuz</title>
 </svelte:head>
 
 {#snippet monthPicker()}
@@ -750,8 +765,14 @@
 				</div>
 				<p class="text-xl sm:text-2xl font-black tabular-nums mt-2 text-red-400">{formatCOP(expense)}</p>
 				<div class="mt-auto pt-3 border-t border-brand-divider/60 flex flex-wrap items-center justify-between gap-1 text-xs">
-					<span class="text-brand-text-muted">
-						{#if budget > 0}{Math.round(budgetPct)}% del presupuesto{:else}{expenseCount} {expenseCount === 1 ? 'gasto' : 'gastos'}{/if}
+					<span class={budget > 0
+						? budgetTone === 'critical'
+							? 'font-bold text-red-400'
+							: budgetTone === 'warning'
+								? 'font-bold text-amber-400'
+								: 'text-brand-text-muted'
+						: 'text-brand-text-muted'}>
+						{#if budget > 0}{budgetTone === 'critical' ? '⚠ ' : ''}{Math.round(budgetPct)}% del presupuesto{:else}{expenseCount} {expenseCount === 1 ? 'gasto' : 'gastos'}{/if}
 					</span>
 					{#if expenseChange !== null}
 						<!-- en gastos, subir es malo -->
