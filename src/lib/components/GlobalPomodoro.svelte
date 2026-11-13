@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import {
@@ -8,9 +8,13 @@
 		Activity, Zap, LayoutDashboard, Settings2, Minimize2, Maximize2, Sparkles
 	} from '@lucide/svelte';
 	import {
-		BREAK_MS, FOCUS_MS, acknowledgePomodoro, clearPomodoroTask, formatPomodoroTime,
-		pausePomodoro, pomodoro, pomodoroUI, resetPomodoro, setPomodoroPhase, startPomodoro, setPomodoroTimes
+		BREAK_MS, FOCUS_MS, MAX_BREAK_MINS, MAX_FOCUS_MINS, MIN_BREAK_MINS, MIN_FOCUS_MINS,
+		acknowledgePomodoro, clearPomodoroTask, formatPomodoroTime, linkPomodoroTask,
+		pausePomodoro, pomodoro, pomodoroSettings, pomodoroUI, resetPomodoro, setPomodoroPhase,
+		skipPomodoro, startPomodoro, setPomodoroTimes
 	} from '$lib/pomodoro.svelte';
+	import { supabase } from '$lib/supabaseClient';
+	import { formatDateInTz } from '$lib/habits';
 	import { ytPlayer } from '$lib/youtubePlayer.svelte';
 	import { isoWeekNumber } from '$lib/habits';
 
@@ -24,16 +28,43 @@
 
 	const phaseLabel = $derived(pomodoro.phase === 'focus' ? 'Enfoque' : 'Descanso');
 	
-	let focusMins = $state(25);
-	let breakMins = $state(5);
-	
-	// Solo debe reaccionar a los minutos elegidos. setPomodoroTimes lee el estado del
-	// temporizador (running/phase); sin untrack, pausar re-ejecutaba el efecto y reiniciaba el tiempo.
-	$effect(() => {
-		const focus = focusMins;
-		const brk = breakMins;
-		untrack(() => setPomodoroTimes(focus, brk));
-	});
+	// Minutos configurados: viven en el store (persisten entre recargas)
+	const focusMins = $derived(pomodoroSettings.focusMins);
+	const breakMins = $derived(pomodoroSettings.breakMins);
+	const setFocusMins = (m: number) => setPomodoroTimes(m, pomodoroSettings.breakMins);
+	const setBreakMins = (m: number) => setPomodoroTimes(pomodoroSettings.focusMins, m);
+	const phaseLocked = $derived(pomodoro.running || pomodoro.awaitingAck);
+
+	// ---------- Selector de tarea para vincular ----------
+	type PickableTask = { id: number; title: string; boardTitle: string };
+	let showTaskPicker = $state(false);
+	let pickerLoading = $state(false);
+	let pickerTasks = $state<PickableTask[]>([]);
+
+	async function openTaskPicker() {
+		showTaskPicker = true;
+		if (!supabase) return;
+		pickerLoading = true;
+		const today = formatDateInTz();
+		const { data } = await supabase
+			.from('tasks')
+			.select('id, title, boards(title)')
+			.eq('is_completed', false)
+			.is('parent_task_id', null)
+			.or(`date.eq.${today},and(date.is.null,end_date.eq.${today})`)
+			.order('start_time', { ascending: true, nullsFirst: false });
+		pickerTasks = (data ?? []).map((t: any) => ({
+			id: t.id,
+			title: t.title || 'Tarea',
+			boardTitle: t.boards?.title ?? ''
+		}));
+		pickerLoading = false;
+	}
+
+	function pickTask(task: PickableTask) {
+		linkPomodoroTask(task.id, task.title);
+		showTaskPicker = false;
+	}
 	
 	let noiseRain = $state(false);
 	let noiseBrown = $state(false);
@@ -79,8 +110,7 @@
 		if (taskIdRaw && title) {
 			const id = Number(taskIdRaw);
 			if (!Number.isNaN(id)) {
-				pomodoro.linkedTaskId = id;
-				pomodoro.linkedTaskTitle = title;
+				linkPomodoroTask(id, title);
 				pomodoroUI.isMaximized = true; // Auto open if navigating via task link
 			}
 		}
@@ -114,9 +144,10 @@
 
 <!-- The audio and youtube container MUST always be in the DOM to keep playing -->
 <div id="youtube-player-container" class="hidden"></div>
-<audio bind:this={audioRain} loop src="https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg" crossorigin="anonymous"></audio>
-<audio bind:this={audioBrown} loop src="https://upload.wikimedia.org/wikipedia/commons/4/47/Wind_in_forest_%28Gravity_Sound%29.wav" crossorigin="anonymous"></audio>
-<audio bind:this={audioFire} loop src="https://actions.google.com/sounds/v1/ambiences/fire.ogg" crossorigin="anonymous"></audio>
+<!-- preload="none": los sonidos (≈18 MB) solo se descargan al activarlos -->
+<audio bind:this={audioRain} loop preload="none" src="https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg" crossorigin="anonymous"></audio>
+<audio bind:this={audioBrown} loop preload="none" src="https://upload.wikimedia.org/wikipedia/commons/4/47/Wind_in_forest_%28Gravity_Sound%29.wav" crossorigin="anonymous"></audio>
+<audio bind:this={audioFire} loop preload="none" src="https://actions.google.com/sounds/v1/ambiences/fire.ogg" crossorigin="anonymous"></audio>
 <audio bind:this={audioAlarm} loop src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" crossorigin="anonymous"></audio>
 
 {#if pomodoroUI.isMaximized}
@@ -158,13 +189,13 @@
 									<span class="text-[11px] font-bold text-brand-accent">{focusMins} min</span>
 								</div>
 								<div class="flex items-center gap-1 bg-[#070b0e] border border-brand-divider p-1 rounded-xl">
-									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => focusMins=Math.max(5, focusMins-5)}>-</button>
+									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => setFocusMins(focusMins - 5)} disabled={focusMins <= MIN_FOCUS_MINS} aria-label="Restar 5 minutos de enfoque">-</button>
 									<div class="flex-1 flex gap-1 px-1">
 										{#each [25, 45, 60, 90] as m}
-											<button class="flex-1 py-1 rounded text-[10px] font-bold {focusMins === m ? 'bg-brand-surface-elevated text-brand-text' : 'text-brand-text-muted hover:text-brand-text'}" onclick={() => focusMins=m}>{m}m</button>
+											<button class="flex-1 py-1 rounded text-[10px] font-bold {focusMins === m ? 'bg-brand-surface-elevated text-brand-text' : 'text-brand-text-muted hover:text-brand-text'}" onclick={() => setFocusMins(m)}>{m}m</button>
 										{/each}
 									</div>
-									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => focusMins+=5}>+</button>
+									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => setFocusMins(focusMins + 5)} disabled={focusMins >= MAX_FOCUS_MINS} aria-label="Sumar 5 minutos de enfoque">+</button>
 								</div>
 							</div>
 							<!-- Break Time -->
@@ -174,13 +205,13 @@
 									<span class="text-[11px] font-bold text-brand-accent">{breakMins} min</span>
 								</div>
 								<div class="flex items-center gap-1 bg-[#070b0e] border border-brand-divider p-1 rounded-xl">
-									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => breakMins=Math.max(1, breakMins-1)}>-</button>
+									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => setBreakMins(breakMins - 1)} disabled={breakMins <= MIN_BREAK_MINS} aria-label="Restar 1 minuto de descanso">-</button>
 									<div class="flex-1 flex gap-1 px-1">
 										{#each [5, 10, 15, 20] as m}
-											<button class="flex-1 py-1 rounded text-[10px] font-bold {breakMins === m ? 'bg-brand-surface-elevated text-brand-text' : 'text-brand-text-muted hover:text-brand-text'}" onclick={() => breakMins=m}>{m}m</button>
+											<button class="flex-1 py-1 rounded text-[10px] font-bold {breakMins === m ? 'bg-brand-surface-elevated text-brand-text' : 'text-brand-text-muted hover:text-brand-text'}" onclick={() => setBreakMins(m)}>{m}m</button>
 										{/each}
 									</div>
-									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => breakMins+=1}>+</button>
+									<button class="w-8 h-7 rounded-lg bg-[#0d1216] flex items-center justify-center text-brand-accent hover:bg-brand-surface transition-colors" onclick={() => setBreakMins(breakMins + 1)} disabled={breakMins >= MAX_BREAK_MINS} aria-label="Sumar 1 minuto de descanso">+</button>
 								</div>
 							</div>
 						</div>
@@ -192,6 +223,8 @@
 							type="button" 
 							class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all {pomodoro.phase === 'focus' ? 'bg-brand-accent text-brand-bg shadow-[0_0_10px_var(--color-brand-accent-muted)]' : 'text-brand-text-muted hover:text-brand-text'}" 
 							onclick={() => setPomodoroPhase('focus')}
+							disabled={phaseLocked}
+							title={phaseLocked ? 'Pausa o reinicia el temporizador para cambiar de fase' : undefined}
 						>
 							<Target class="w-4 h-4" /> Enfoque · {focusMins} min
 						</button>
@@ -199,6 +232,8 @@
 							type="button" 
 							class="flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold transition-all {pomodoro.phase === 'break' ? 'bg-brand-surface-elevated text-brand-text shadow-sm' : 'text-brand-text-muted hover:text-brand-text'}" 
 							onclick={() => setPomodoroPhase('break')}
+							disabled={phaseLocked}
+							title={phaseLocked ? 'Pausa o reinicia el temporizador para cambiar de fase' : undefined}
 						>
 							<Coffee class="w-4 h-4" /> Descanso Corto · {breakMins} min
 						</button>
@@ -246,9 +281,49 @@
 											<p class="text-xs font-bold text-brand-text truncate">{pomodoro.linkedTaskTitle}</p>
 										</div>
 									</div>
-									<button class="px-3 py-1.5 rounded-lg bg-brand-surface border border-brand-divider text-[10px] font-bold text-brand-accent hover:bg-brand-surface-elevated transition-colors" onclick={clearPomodoroTask}>
-										Cambiar
-									</button>
+									<div class="flex items-center gap-1 shrink-0">
+										<button class="px-3 py-1.5 rounded-lg bg-brand-surface border border-brand-divider text-[10px] font-bold text-brand-accent hover:bg-brand-surface-elevated transition-colors" onclick={openTaskPicker}>
+											Cambiar
+										</button>
+										<button class="p-1.5 rounded-lg text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors" onclick={clearPomodoroTask} title="Quitar tarea vinculada" aria-label="Quitar tarea vinculada">
+											<X class="w-3.5 h-3.5" />
+										</button>
+									</div>
+								</div>
+							{:else}
+								<button
+									class="w-full flex items-center justify-center gap-2 bg-[#070b0e]/80 border border-dashed border-brand-divider rounded-2xl p-3 text-[11px] font-bold text-brand-text-muted hover:text-brand-accent hover:border-brand-accent/50 transition-colors"
+									onclick={openTaskPicker}
+								>
+									<ListChecks class="w-4 h-4" /> Vincular una tarea de hoy
+								</button>
+							{/if}
+
+							{#if showTaskPicker}
+								<div class="mt-2 w-full bg-[#070b0e] border border-brand-divider rounded-2xl p-2 shadow-2xl max-h-56 overflow-y-auto custom-scrollbar">
+									<div class="flex items-center justify-between px-2 py-1 mb-1">
+										<p class="text-[9px] font-bold text-brand-text-muted tracking-wider uppercase">Tareas pendientes de hoy</p>
+										<button class="p-1 text-brand-text-muted hover:text-brand-text" onclick={() => (showTaskPicker = false)} aria-label="Cerrar selector de tareas">
+											<X class="w-3.5 h-3.5" />
+										</button>
+									</div>
+									{#if pickerLoading}
+										<p class="text-xs text-brand-text-muted px-2 py-3 text-center">Cargando…</p>
+									{:else if pickerTasks.length === 0}
+										<p class="text-xs text-brand-text-muted px-2 py-3 text-center">No tienes tareas pendientes para hoy.</p>
+									{:else}
+										{#each pickerTasks as task (task.id)}
+											<button
+												class="w-full text-left flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-brand-surface transition-colors {task.id === pomodoro.linkedTaskId ? 'text-brand-accent' : 'text-brand-text'}"
+												onclick={() => pickTask(task)}
+											>
+												<span class="text-xs font-bold truncate">{task.title}</span>
+												{#if task.boardTitle}
+													<span class="text-[9px] text-brand-text-muted shrink-0">{task.boardTitle}</span>
+												{/if}
+											</button>
+										{/each}
+									{/if}
 								</div>
 							{/if}
 						</div>
@@ -273,7 +348,12 @@
 								</button>
 							{/if}
 
-							<button class="p-3 rounded-full text-brand-text-muted hover:text-brand-text bg-[#070b0e] border border-brand-divider hover:border-brand-accent transition-all">
+							<button
+								class="p-3 rounded-full text-brand-text-muted hover:text-brand-text bg-[#070b0e] border border-brand-divider hover:border-brand-accent transition-all"
+								onclick={skipPomodoro}
+								title={pomodoro.phase === 'focus' ? 'Saltar al descanso' : 'Saltar al enfoque'}
+								aria-label={pomodoro.phase === 'focus' ? 'Saltar al descanso' : 'Saltar al enfoque'}
+							>
 								<SkipForward class="w-4 h-4" />
 							</button>
 							
@@ -512,8 +592,8 @@
 									<div class="flex items-center gap-3">
 										<div class="w-8 h-8 rounded-lg bg-[#070b0e] border border-brand-divider flex items-center justify-center text-blue-400"><CloudRain class="w-4 h-4" /></div>
 										<div>
-											<p class="text-xs font-bold text-brand-text">Lluvia Suave</p>
-											<p class="text-[9px] text-brand-text-muted">Calma y reducción de ecos</p>
+											<p class="text-xs font-bold text-brand-text">Lluvia</p>
+											<p class="text-[9px] text-brand-text-muted">Aguacero constante que tapa el ruido</p>
 										</div>
 									</div>
 									<button class="w-6 h-6 rounded-md flex items-center justify-center border transition-colors {noiseRain ? 'bg-brand-accent border-brand-accent text-brand-bg shadow-[0_0_5px_var(--color-brand-accent-muted)]' : 'bg-brand-surface border-brand-divider text-brand-text-muted'}" onclick={() => noiseRain=!noiseRain}>
@@ -531,8 +611,8 @@
 									<div class="flex items-center gap-3">
 										<div class="w-8 h-8 rounded-lg bg-[#070b0e] border border-brand-divider flex items-center justify-center text-green-500"><Wind class="w-4 h-4" /></div>
 										<div>
-											<p class="text-xs font-bold text-brand-text">Bosque Matutino</p>
-											<p class="text-[9px] text-brand-text-muted">Pájaros y naturaleza</p>
+											<p class="text-xs font-bold text-brand-text">Viento en el bosque</p>
+											<p class="text-[9px] text-brand-text-muted">Brisa entre los árboles</p>
 										</div>
 									</div>
 									<button class="w-6 h-6 rounded-md flex items-center justify-center border transition-colors {noiseBrown ? 'bg-brand-accent border-brand-accent text-brand-bg shadow-[0_0_5px_var(--color-brand-accent-muted)]' : 'bg-brand-surface border-brand-divider text-brand-text-muted'}" onclick={() => noiseBrown=!noiseBrown}>
