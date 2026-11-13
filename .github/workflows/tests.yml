@@ -1,6 +1,6 @@
 name: Pruebas
 
-# Corre las pruebas automáticas y el build en cada push y pull request.
+# Verifica tipos, corre las pruebas automáticas y el build en cada push y pull request.
 on:
   push:
     branches: [main]
@@ -19,6 +19,9 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Verificar tipos y accesibilidad (svelte-check)
+        run: npm run check -- --fail-on-warnings
 
       - name: Pruebas (rachas, fechas, saldos, notas, Pomodoro)
         run: npm test

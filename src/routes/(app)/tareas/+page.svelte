@@ -251,9 +251,18 @@
 	{:else}
 		<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 overflow-y-auto pb-8">
 			{#each boards as board}
-				<div 
-					class="bg-brand-surface border border-brand-divider rounded-xl p-5 hover:border-brand-accent/50 transition-all group relative cursor-pointer shadow-lg hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)]"
+				<div
+					class="bg-brand-surface border border-brand-divider rounded-xl p-5 hover:border-brand-accent/50 transition-all group relative cursor-pointer shadow-lg hover:shadow-[0_4px_20px_rgba(0,0,0,0.3)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent"
+					role="link"
+					tabindex="0"
+					aria-label="Abrir tablero {board.title}"
 					onclick={() => goToBoard(board.id)}
+					onkeydown={(e) => {
+						if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+							e.preventDefault();
+							goToBoard(board.id);
+						}
+					}}
 				>
 					<div class="flex items-start justify-between mb-4">
 						<div class="flex items-center gap-3">
@@ -262,24 +271,26 @@
 						</div>
 						
 						<div class="flex items-center gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div 
+							<button
+								type="button"
 								class="p-2 hover:bg-brand-surface-elevated rounded-md text-brand-text-muted hover:text-brand-text transition-colors"
 								onclick={(e) => { e.stopPropagation(); openEditModal(board); }}
+								onkeydown={(e) => e.stopPropagation()}
 								title="Editar tablero"
+								aria-label="Editar tablero {board.title}"
 							>
 								<Edit2 class="w-4 h-4" />
-							</div>
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div 
+							</button>
+							<button
+								type="button"
 								class="p-2 hover:bg-brand-surface-elevated rounded-md text-brand-text-muted hover:text-red-400 transition-colors"
 								onclick={(e) => { e.stopPropagation(); requestDeleteBoard(board.id); }}
+								onkeydown={(e) => e.stopPropagation()}
 								title="Eliminar tablero"
+								aria-label="Eliminar tablero {board.title}"
 							>
 								<Trash2 class="w-4 h-4" />
-							</div>
+							</button>
 						</div>
 					</div>
 					
@@ -322,6 +333,7 @@
 			<div class="space-y-5">
 				<div>
 					<label for="board-title" class="block text-sm font-semibold text-brand-text-muted mb-2">Nombre del Tablero</label>
+					<!-- svelte-ignore a11y_autofocus -->
 					<input 
 						id="board-title"
 						type="text" 
@@ -333,7 +345,7 @@
 				</div>
 				
 				<div>
-					<label class="block text-sm font-semibold text-brand-text-muted mb-2">Color del Tablero</label>
+					<p class="block text-sm font-semibold text-brand-text-muted mb-2">Color del Tablero</p>
 					<div class="flex gap-3">
 						{#each COLORS as color}
 							<button 
@@ -357,7 +369,7 @@
 					
 					{#if isShared}
 						<div class="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
-							<label class="block text-xs font-semibold text-brand-text-muted mb-2">Selecciona contactos para invitar</label>
+							<p class="block text-xs font-semibold text-brand-text-muted mb-2">Selecciona contactos para invitar</p>
 							{#if contacts.length === 0}
 								<div class="text-sm text-brand-text-muted p-3 bg-[#070b0e] border border-brand-divider rounded-xl">
 									Aún no tienes contactos. <a href="/perfil" class="text-brand-accent hover:underline">Ir al perfil para agregar</a>.

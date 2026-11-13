@@ -1,5 +1,11 @@
 import { supabase } from '$lib/supabaseClient';
 
+/** Cliente de Supabase; si la app no tiene configuradas las variables, falla con un mensaje claro. */
+function db() {
+	if (!supabase) throw new Error('Supabase no está configurado (faltan variables de entorno).');
+	return supabase;
+}
+
 export interface Note {
 	id: string;
 	user_id: string;
@@ -23,7 +29,7 @@ export interface Contact {
 export type InsertNote = Partial<Omit<Note, 'id' | 'created_at' | 'updated_at' | 'user_id'>>;
 
 export async function fetchRootNotes() {
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('notes')
 		.select('*')
 		.is('parent_id', null)
@@ -34,7 +40,7 @@ export async function fetchRootNotes() {
 }
 
 export async function fetchNote(id: string) {
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('notes')
 		.select('*')
 		.eq('id', id)
@@ -45,7 +51,7 @@ export async function fetchNote(id: string) {
 }
 
 export async function fetchSubnotes(parentId: string) {
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('notes')
 		.select('*')
 		.eq('parent_id', parentId)
@@ -56,7 +62,7 @@ export async function fetchSubnotes(parentId: string) {
 }
 
 export async function createNote(note: InsertNote) {
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('notes')
 		.insert(note)
 		.select()
@@ -67,7 +73,7 @@ export async function createNote(note: InsertNote) {
 }
 
 export async function updateNote(id: string, updates: Partial<Note>) {
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('notes')
 		.update(updates)
 		.eq('id', id)
@@ -79,7 +85,7 @@ export async function updateNote(id: string, updates: Partial<Note>) {
 }
 
 export async function deleteNote(id: string) {
-	const { error } = await supabase
+	const { error } = await db()
 		.from('notes')
 		.delete()
 		.eq('id', id);
@@ -88,10 +94,10 @@ export async function deleteNote(id: string) {
 }
 
 export async function fetchMyContacts() {
-	const { data: { user } } = await supabase.auth.getUser();
+	const { data: { user } } = await db().auth.getUser();
 	if (!user) return [];
 	
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('contacts')
 		.select(`
 			contact_user_id,
@@ -109,7 +115,7 @@ export async function fetchMyContacts() {
 }
 
 export async function fetchNoteShares(noteId: string) {
-	const { data, error } = await supabase
+	const { data, error } = await db()
 		.from('note_shares')
 		.select('shared_with')
 		.eq('note_id', noteId);
@@ -118,14 +124,14 @@ export async function fetchNoteShares(noteId: string) {
 }
 
 export async function shareNote(noteId: string, contactId: string) {
-	const { error } = await supabase
+	const { error } = await db()
 		.from('note_shares')
 		.insert({ note_id: noteId, shared_with: contactId });
 	if (error) throw error;
 }
 
 export async function unshareNote(noteId: string, contactId: string) {
-	const { error } = await supabase
+	const { error } = await db()
 		.from('note_shares')
 		.delete()
 		.eq('note_id', noteId)

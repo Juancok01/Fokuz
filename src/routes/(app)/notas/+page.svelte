@@ -1578,6 +1578,7 @@
 				<h3 class="text-lg font-bold text-brand-text mb-4">
 					Nueva Carpeta
 				</h3>
+				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					type="text"
 					bind:value={newFolderName}
@@ -1825,6 +1826,7 @@
 			<h3 class="text-xl font-bold text-brand-text mb-4">
 				Renombrar Carpeta
 			</h3>
+			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				type="text"
 				bind:value={editFolderName}
@@ -1911,6 +1913,7 @@
 			<h3 class="text-xl font-bold text-brand-text mb-4">
 				Nueva Nota
 			</h3>
+			<!-- svelte-ignore a11y_autofocus -->
 			<input
 				type="text"
 				bind:value={newNoteTitle}
