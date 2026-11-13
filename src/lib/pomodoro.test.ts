@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // El reproductor de YouTube y $app/environment no son parte de lo que se prueba
 vi.mock('./youtubePlayer.svelte', () => ({ ytPlayer: { play: vi.fn(), pause: vi.fn() } }));
 vi.mock('$app/environment', () => ({ browser: true, dev: true, building: false, version: 'test' }));
+// El envío a Supabase se prueba en focusSessions.test.ts; aquí solo importa qué se registra
+vi.mock('./focusSessions', () => ({ recordFocusSession: vi.fn(), flushFocusSessions: vi.fn() }));
 
 const STORAGE_KEY = 'fokuz:pomodoro:v1';
 const MIN = 60_000;
@@ -14,6 +16,12 @@ const NOW = new Date('2026-11-12T15:00:00Z');
 const loadPomodoro = async () => {
 	vi.resetModules();
 	return import('./pomodoro.svelte');
+};
+
+/** Lo que el Pomodoro mandó a focus_sessions desde la última recarga. */
+const recorded = async () => {
+	const { recordFocusSession } = await import('./focusSessions');
+	return vi.mocked(recordFocusSession).mock.calls.map(([r]) => r);
 };
 
 // Recargar el módulo compila Svelte en cada prueba: margen extra en la corrida completa
@@ -123,5 +131,73 @@ describe('Pomodoro', { timeout: 20_000 }, () => {
 		localStorage.setItem(STORAGE_KEY, '{no-es-json');
 		const p = await loadPomodoro();
 		expect(p.formatPomodoroTime()).toBe('25:00');
+	});
+
+	describe('registro de sesiones (focus_sessions)', () => {
+		it('un enfoque completo se registra una vez, con su tarea', async () => {
+			const p = await loadPomodoro();
+			p.linkPomodoroTask(7, 'Informe');
+			p.startPomodoro();
+			await vi.advanceTimersByTimeAsync(25 * MIN + 500);
+			p.acknowledgePomodoro(); // arranca el descanso: todavía no se registra
+			expect(await recorded()).toEqual([
+				{
+					phase: 'focus',
+					startedAtMs: NOW.getTime(),
+					endedAtMs: NOW.getTime() + 25 * MIN,
+					plannedMs: 25 * MIN,
+					remainingMs: 0,
+					completed: true,
+					taskId: 7
+				}
+			]);
+		});
+
+		it('pausar no registra; al terminar, la sesión conserva la hora de inicio original', async () => {
+			const p = await loadPomodoro();
+			p.startPomodoro();
+			await vi.advanceTimersByTimeAsync(5 * MIN);
+			p.pausePomodoro();
+			await vi.advanceTimersByTimeAsync(30 * MIN);
+			expect(await recorded()).toEqual([]);
+			p.startPomodoro();
+			await vi.advanceTimersByTimeAsync(20 * MIN + 500);
+			const [r] = await recorded();
+			expect(r.startedAtMs).toBe(NOW.getTime());
+			expect(r.completed).toBe(true);
+		});
+
+		it('Saltar a mitad de un enfoque lo registra como interrumpido con lo que faltaba', async () => {
+			const p = await loadPomodoro();
+			p.startPomodoro();
+			await vi.advanceTimersByTimeAsync(10 * MIN);
+			p.skipPomodoro();
+			const [r] = await recorded();
+			expect(r.completed).toBe(false);
+			expect(r.phase).toBe('focus');
+			expect(r.remainingMs).toBe(15 * MIN);
+		});
+
+		it('Reiniciar también cierra la fase como interrumpida', async () => {
+			const p = await loadPomodoro();
+			p.startPomodoro();
+			await vi.advanceTimersByTimeAsync(3 * MIN);
+			p.resetPomodoro();
+			expect((await recorded()).map((r) => r.completed)).toEqual([false]);
+		});
+
+		it('si terminó con la página cerrada, se registra al volver, y solo una vez', async () => {
+			let p = await loadPomodoro();
+			p.startPomodoro();
+			vi.setSystemTime(NOW.getTime() + 60 * MIN); // página cerrada una hora
+			p = await loadPomodoro();
+			const [r] = await recorded();
+			expect(r.completed).toBe(true);
+			expect(r.endedAtMs).toBe(NOW.getTime() + 25 * MIN);
+
+			vi.mocked((await import('./focusSessions')).recordFocusSession).mockClear();
+			await loadPomodoro(); // otra recarga con la alarma sonando
+			expect(await recorded()).toEqual([]);
+		});
 	});
 });

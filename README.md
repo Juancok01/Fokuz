@@ -141,7 +141,7 @@ Supabase (Postgres) ──► Extracción diaria ──► S3 (raw) ──► Tr
 - ¿Cuánto tiempo pasa entre que creo una tarea y la completo?
 - ¿Mis semanas de más enfoque coinciden con semanas de menos gasto?
 
-**Preparación pendiente en la app:** registrar la fecha en que se completa cada tarea (`completed_at`) y guardar cada sesión de Pomodoro en una tabla (`focus_sessions`), para que esos datos se acumulen desde ya.
+**Preparación de la fuente (noviembre 2026):** la migración [`033`](supabase/migrations/033_task_timestamps_focus_sessions.sql) agrega `created_at` y `completed_at` a las tareas (un trigger mantiene `completed_at` venga de donde venga el cambio) y la tabla `focus_sessions`, con una fila por fase de Pomodoro, completa o interrumpida. Las tareas anteriores quedan con fecha `NULL` (desconocida) en lugar de fechas inventadas. Si no hay conexión, las sesiones se guardan en una cola local y se envían después, sin duplicados ([`focusSessions.ts`](src/lib/focusSessions.ts)).
 
 **Privacidad:** los datos financieros son personales. Lo que se publique del proyecto de datos usará datos sintéticos o anonimizados.
 

@@ -2,6 +2,7 @@
 import { browser } from '$app/environment';
 import { ytPlayer } from './youtubePlayer.svelte';
 import { formatDateInTz } from './habits';
+import { flushFocusSessions, recordFocusSession } from './focusSessions';
 
 export const MIN_FOCUS_MINS = 5;
 export const MAX_FOCUS_MINS = 180;
@@ -35,6 +36,9 @@ export const pomodoroUI = $state({
 });
 
 let endsAt: number | null = null;
+/** Cuándo arrancó la fase actual y cuánto duraba (para registrarla en focus_sessions). */
+let phaseStartedAt: number | null = null;
+let phasePlannedMs = 0;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 
 // ---------------- Persistencia ----------------
@@ -53,6 +57,8 @@ type Persisted = {
 	linkedTaskId: number | null;
 	linkedTaskTitle: string;
 	completedTasks: { title: string; duration: number }[];
+	phaseStartedAt?: number | null;
+	phasePlannedMs?: number;
 };
 
 const clamp = (n: number, min: number, max: number) =>
@@ -74,7 +80,9 @@ const persist = () => {
 		sessionsDate: pomodoro.sessionsDate,
 		linkedTaskId: pomodoro.linkedTaskId,
 		linkedTaskTitle: pomodoro.linkedTaskTitle,
-		completedTasks: pomodoro.completedTasks
+		completedTasks: pomodoro.completedTasks,
+		phaseStartedAt,
+		phasePlannedMs
 	};
 	try {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -100,6 +108,31 @@ const applyTimes = (focusMins: number, breakMins: number) => {
 	BREAK_MS = pomodoroSettings.breakMins * 60 * 1000;
 };
 
+// ---------------- Registro de sesiones ----------------
+/** Envía la fase en curso a focus_sessions (completa o interrumpida) y la da por cerrada. */
+const finishPhaseRecord = (completed: boolean, endedAtMs: number) => {
+	if (phaseStartedAt == null) return;
+	recordFocusSession({
+		phase: pomodoro.phase,
+		startedAtMs: phaseStartedAt,
+		endedAtMs,
+		plannedMs: phasePlannedMs,
+		remainingMs: completed ? 0 : pomodoro.remainingMs,
+		completed,
+		taskId: pomodoro.linkedTaskId
+	});
+	phaseStartedAt = null;
+};
+
+/** La fase en curso se abandona (saltar, reiniciar, cambiar tiempos o de fase). */
+const abandonPhase = () => {
+	if (pomodoro.running) {
+		const left = endsAt == null ? pomodoro.remainingMs : Math.max(0, endsAt - Date.now());
+		pomodoro.remainingMs = left;
+	}
+	finishPhaseRecord(false, Date.now());
+};
+
 // ---------------- Temporizador ----------------
 const clearTick = () => {
 	if (tickTimer != null) {
@@ -109,6 +142,7 @@ const clearTick = () => {
 };
 
 const completePhase = () => {
+	finishPhaseRecord(true, endsAt ?? Date.now());
 	clearTick();
 	pomodoro.running = false;
 	endsAt = null;
@@ -140,6 +174,7 @@ export const formatPomodoroTime = (ms: number = pomodoro.remainingMs) => {
 export const setPomodoroTimes = (focusMins: number, breakMins: number) => {
 	applyTimes(focusMins, breakMins);
 	if (!pomodoro.running && !pomodoro.awaitingAck) {
+		abandonPhase(); // la fase pausada vuelve a empezar con los tiempos nuevos
 		pomodoro.remainingMs = phaseMs(pomodoro.phase);
 	}
 	persist();
@@ -151,6 +186,10 @@ export const startPomodoro = () => {
 
 	if (pomodoro.remainingMs <= 0) {
 		pomodoro.remainingMs = phaseMs(pomodoro.phase);
+	}
+	if (phaseStartedAt == null) {
+		phaseStartedAt = Date.now();
+		phasePlannedMs = pomodoro.remainingMs;
 	}
 	endsAt = Date.now() + pomodoro.remainingMs;
 	pomodoro.running = true;
@@ -209,6 +248,7 @@ export const skipPomodoro = () => {
 		acknowledgePomodoro();
 		return;
 	}
+	abandonPhase();
 	clearTick();
 	pomodoro.running = false;
 	endsAt = null;
@@ -219,6 +259,7 @@ export const skipPomodoro = () => {
 };
 
 export const resetPomodoro = () => {
+	abandonPhase();
 	clearTick();
 	pomodoro.running = false;
 	pomodoro.awaitingAck = false;
@@ -230,6 +271,7 @@ export const resetPomodoro = () => {
 
 export const setPomodoroPhase = (phase: PomodoroPhase) => {
 	if (pomodoro.running || pomodoro.awaitingAck) return;
+	abandonPhase();
 	clearTick();
 	pomodoro.running = false;
 	pomodoro.awaitingAck = false;
@@ -274,6 +316,8 @@ const restore = () => {
 	pomodoro.linkedTaskId = typeof saved.linkedTaskId === 'number' ? saved.linkedTaskId : null;
 	pomodoro.linkedTaskTitle = typeof saved.linkedTaskTitle === 'string' ? saved.linkedTaskTitle : '';
 	pomodoro.completedTasks = Array.isArray(saved.completedTasks) ? saved.completedTasks : [];
+	phaseStartedAt = typeof saved.phaseStartedAt === 'number' ? saved.phaseStartedAt : null;
+	phasePlannedMs = Number(saved.phasePlannedMs) > 0 ? Number(saved.phasePlannedMs) : phaseMs(pomodoro.phase);
 	rollDailyMetrics();
 
 	if (saved.awaitingAck) {
@@ -290,6 +334,7 @@ const restore = () => {
 			startTicking();
 		} else {
 			// Terminó mientras la página estaba cerrada
+			finishPhaseRecord(true, saved.endsAt);
 			pomodoro.remainingMs = 0;
 			pomodoro.running = false;
 			pomodoro.awaitingAck = true;
@@ -300,6 +345,7 @@ const restore = () => {
 		pomodoro.remainingMs = remaining > 0 && remaining <= full ? remaining : full;
 	}
 	persist();
+	flushFocusSessions(); // reintenta lo que quedó pendiente (p. ej. sin conexión)
 };
 
 restore();
