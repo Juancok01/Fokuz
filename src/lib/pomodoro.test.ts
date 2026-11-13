@@ -6,6 +6,7 @@ vi.mock('./youtubePlayer.svelte', () => ({ ytPlayer: { play: vi.fn(), pause: vi.
 vi.mock('$app/environment', () => ({ browser: true, dev: true, building: false, version: 'test' }));
 // El envío a Supabase se prueba en focusSessions.test.ts; aquí solo importa qué se registra
 vi.mock('./focusSessions', () => ({ recordFocusSession: vi.fn(), flushFocusSessions: vi.fn() }));
+vi.mock('./pomodoroNotify', () => ({ notifyPhaseEnd: vi.fn(), requestNotificationPermission: vi.fn() }));
 
 const STORAGE_KEY = 'fokuz:pomodoro:v1';
 const MIN = 60_000;
@@ -198,6 +199,38 @@ describe('Pomodoro', { timeout: 20_000 }, () => {
 			vi.mocked((await import('./focusSessions')).recordFocusSession).mockClear();
 			await loadPomodoro(); // otra recarga con la alarma sonando
 			expect(await recorded()).toEqual([]);
+		});
+	});
+
+	describe('aviso del sistema', () => {
+		it('al terminar un enfoque avisa con los minutos del descanso; al iniciar pide permiso', async () => {
+			const p = await loadPomodoro();
+			const n = await import('./pomodoroNotify');
+			p.setPomodoroTimes(25, 10);
+			p.startPomodoro();
+			expect(vi.mocked(n.requestNotificationPermission)).toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(25 * MIN + 500);
+			expect(vi.mocked(n.notifyPhaseEnd).mock.calls.map(([phase, mins]) => [phase, mins])).toEqual([['focus', 10]]);
+		});
+
+		it('pausar o saltar no avisa', async () => {
+			const p = await loadPomodoro();
+			const n = await import('./pomodoroNotify');
+			p.startPomodoro();
+			p.pausePomodoro();
+			p.skipPomodoro();
+			expect(vi.mocked(n.notifyPhaseEnd)).not.toHaveBeenCalled();
+		});
+
+		it('termina a tiempo aunque el navegador frene el reloj de la pestaña oculta', async () => {
+			const p = await loadPomodoro();
+			const realSetInterval = globalThis.setInterval;
+			// Simula una pestaña oculta: el intervalo de 250 ms no llega a correr
+			vi.spyOn(globalThis, 'setInterval').mockImplementation((() => 0) as unknown as typeof setInterval);
+			p.startPomodoro();
+			await vi.advanceTimersByTimeAsync(25 * MIN + 100);
+			expect(p.pomodoro.awaitingAck).toBe(true);
+			globalThis.setInterval = realSetInterval;
 		});
 	});
 });

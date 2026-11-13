@@ -3,6 +3,7 @@ import { browser } from '$app/environment';
 import { ytPlayer } from './youtubePlayer.svelte';
 import { formatDateInTz } from './habits';
 import { flushFocusSessions, recordFocusSession } from './focusSessions';
+import { notifyPhaseEnd, requestNotificationPermission } from './pomodoroNotify';
 
 export const MIN_FOCUS_MINS = 5;
 export const MAX_FOCUS_MINS = 180;
@@ -40,6 +41,8 @@ let endsAt: number | null = null;
 let phaseStartedAt: number | null = null;
 let phasePlannedMs = 0;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
+/** Disparo puntual al final de la fase: en pestañas ocultas el intervalo se frena hasta 1 vez por minuto. */
+let endTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ---------------- Persistencia ----------------
 const STORAGE_KEY = 'fokuz:pomodoro:v1';
@@ -139,6 +142,10 @@ const clearTick = () => {
 		clearInterval(tickTimer);
 		tickTimer = null;
 	}
+	if (endTimer != null) {
+		clearTimeout(endTimer);
+		endTimer = null;
+	}
 };
 
 const completePhase = () => {
@@ -150,6 +157,11 @@ const completePhase = () => {
 	pomodoro.awaitingAck = true;
 	ytPlayer.pause();
 	persist();
+	// Aviso del sistema si Fokuz no está a la vista (si lo está, ya suena la alarma)
+	const nextMins = pomodoro.phase === 'focus' ? pomodoroSettings.breakMins : pomodoroSettings.focusMins;
+	notifyPhaseEnd(pomodoro.phase, nextMins, () => {
+		pomodoroUI.isOpen = true;
+	});
 };
 
 const syncRemaining = () => {
@@ -162,6 +174,7 @@ const syncRemaining = () => {
 const startTicking = () => {
 	clearTick();
 	tickTimer = setInterval(syncRemaining, 250);
+	if (endsAt != null) endTimer = setTimeout(syncRemaining, Math.max(0, endsAt - Date.now()) + 50);
 };
 
 export const formatPomodoroTime = (ms: number = pomodoro.remainingMs) => {
@@ -182,6 +195,7 @@ export const setPomodoroTimes = (focusMins: number, breakMins: number) => {
 
 export const startPomodoro = () => {
 	if (pomodoro.running || pomodoro.awaitingAck) return;
+	requestNotificationPermission(); // la primera vez, el navegador pregunta si permite avisos
 	rollDailyMetrics();
 
 	if (pomodoro.remainingMs <= 0) {
@@ -349,3 +363,6 @@ const restore = () => {
 };
 
 restore();
+
+// Al volver a la pestaña, actualiza el reloj de inmediato
+if (browser) document.addEventListener('visibilitychange', syncRemaining);
