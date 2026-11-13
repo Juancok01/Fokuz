@@ -17,6 +17,7 @@
 	} from '@lucide/svelte';
 	import { onMount } from 'svelte';
 	import { supabase } from '$lib/supabaseClient';
+	import ConfirmModal from '$lib/components/ConfirmModal.svelte';
 	import { sectionPrefs, SECTION_OPTIONS, type SectionId } from '$lib/sectionPrefs.svelte';
 
 	const sectionIcons: Record<SectionId, typeof User> = {
@@ -118,7 +119,8 @@
 	const contactErrorMessage = (code: string) => {
 		switch (code) {
 			case 'not_found':
-				return 'Ese correo no está registrado en Fokuz.';
+				// Mensaje neutro: no confirma si un correo usa o no Fokuz
+				return 'No se pudo agregar ese contacto. Revisa el correo; la persona debe haber iniciado sesión en Fokuz al menos una vez.';
 			case 'self':
 				return 'No puedes agregarte a ti mismo.';
 			case 'invalid_email':
@@ -157,10 +159,11 @@
 
 		// Si aún no existe la columna nickname, reintentar sin ella
 		if (rowsResult.error && /nickname/i.test(rowsResult.error.message)) {
-			rowsResult = await supabase
+			// Sin la columna nickname las filas llegan sin ese campo (se trata como vacío)
+			rowsResult = (await supabase
 				.from('contacts')
 				.select('id, contact_user_id')
-				.order('created_at', { ascending: false });
+				.order('created_at', { ascending: false })) as typeof rowsResult;
 		}
 
 		if (rowsResult.error) {
@@ -223,6 +226,8 @@
 			versesLoadError = error.message;
 		} else {
 			savedVerses = data ?? [];
+			lastSavedNotes.clear();
+			for (const v of savedVerses) lastSavedNotes.set(String(v.id), (v.notes ?? '').trim());
 		}
 	};
 
@@ -424,41 +429,92 @@
 		}, 800);
 	};
 
-	const removeContact = async (contact: Contact) => {
+	// ---------- Confirmaciones (diálogo propio en vez de confirm/alert del navegador) ----------
+	let pendingConfirm = $state<{ title: string; message: string; confirmText: string; run: () => Promise<void> } | null>(null);
+	let actionError = $state('');
+	let actionErrorTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const showActionError = (message: string) => {
+		actionError = message;
+		clearTimeout(actionErrorTimer);
+		actionErrorTimer = setTimeout(() => (actionError = ''), 5000);
+	};
+
+	const runPendingConfirm = async () => {
+		const job = pendingConfirm;
+		pendingConfirm = null;
+		if (job) await job.run();
+	};
+
+	const removeContact = (contact: Contact) => {
 		if (!supabase || !contact.contact_row_id) return;
-		if (!confirm(`¿Eliminar a ${contactLabel(contact)} de tus contactos?`)) return;
-
-		const { error } = await supabase.from('contacts').delete().eq('id', contact.contact_row_id);
-		if (error) {
-			alert('Error al eliminar contacto: ' + error.message);
-			return;
-		}
-
-		contacts = contacts.filter((c) => c.id !== contact.id);
-		if (selectedContact?.id === contact.id) closeEditContact();
+		pendingConfirm = {
+			title: 'Eliminar contacto',
+			message: `¿Eliminar a ${contactLabel(contact)} de tus contactos?`,
+			confirmText: 'Eliminar',
+			run: async () => {
+				const { error } = await supabase!.from('contacts').delete().eq('id', contact.contact_row_id);
+				if (error) {
+					showActionError('No se pudo eliminar el contacto: ' + error.message);
+					return;
+				}
+				contacts = contacts.filter((c) => c.id !== contact.id);
+				if (selectedContact?.id === contact.id) closeEditContact();
+			}
+		};
 	};
 
-	const removeSavedVerse = async (verse: SavedVerse) => {
+	const removeSavedVerse = (verse: SavedVerse) => {
 		if (!supabase) return;
-		if (!confirm(`¿Eliminar la cita ${verse.reference} de tus guardados?`)) return;
-		
-		const { error } = await supabase.from('saved_verses').delete().eq('id', verse.id);
-		if (error) {
-			alert('Error al eliminar versículo: ' + error.message);
-			return;
-		}
-		savedVerses = savedVerses.filter(v => v.id !== verse.id);
+		pendingConfirm = {
+			title: 'Eliminar versículo',
+			message: `¿Eliminar la cita ${verse.reference} de tus guardados?`,
+			confirmText: 'Eliminar',
+			run: async () => {
+				const { error } = await supabase!.from('saved_verses').delete().eq('id', verse.id);
+				if (error) {
+					showActionError('No se pudo eliminar el versículo: ' + error.message);
+					return;
+				}
+				savedVerses = savedVerses.filter((v) => v.id !== verse.id);
+			}
+		};
 	};
+
+	// ---------- Notas de versículos ----------
+	type NoteStatus = 'saving' | 'saved' | 'error';
+	let noteStatus = $state<Record<string, NoteStatus>>({});
+	let noteError = $state<Record<string, string>>({});
+	/** Última nota guardada por versículo, para no reenviar si no cambió */
+	const lastSavedNotes = new Map<string, string>();
 
 	const updateVerseNotes = async (verse: SavedVerse) => {
 		if (!supabase) return;
-		const { error } = await supabase
+		const key = String(verse.id);
+		const value = (verse.notes ?? '').trim();
+		if (lastSavedNotes.get(key) === value) return;
+
+		noteStatus[key] = 'saving';
+		// .select() permite detectar si la actualización afectó la fila: con RLS, un update
+		// no permitido no devuelve error, solo 0 filas.
+		const { data, error } = await supabase
 			.from('saved_verses')
-			.update({ notes: verse.notes || null })
-			.eq('id', verse.id);
-		if (error) {
-			console.error('Error al guardar nota del versículo:', error.message);
+			.update({ notes: value || null })
+			.eq('id', verse.id)
+			.select('id');
+
+		if (error || !data || data.length === 0) {
+			noteStatus[key] = 'error';
+			noteError[key] = error
+				? error.message
+				: 'No se guardó. Falta ejecutar la migración 029_saved_verses_update.sql en Supabase.';
+			return;
 		}
+		lastSavedNotes.set(key, value);
+		noteStatus[key] = 'saved';
+		setTimeout(() => {
+			if (noteStatus[key] === 'saved') delete noteStatus[key];
+		}, 2500);
 	};
 
 	onMount(() => {
@@ -596,6 +652,15 @@
 							bind:value={verse.notes}
 							onblur={() => updateVerseNotes(verse)}
 						></textarea>
+						{#if noteStatus[String(verse.id)] === 'saving'}
+							<p class="mt-1 text-[11px] text-brand-text-muted">Guardando nota…</p>
+						{:else if noteStatus[String(verse.id)] === 'saved'}
+							<p class="mt-1 text-[11px] font-bold text-brand-accent">✓ Nota guardada</p>
+						{:else if noteStatus[String(verse.id)] === 'error'}
+							<p class="mt-1 text-[11px] font-bold text-red-400" role="alert">
+								{noteError[String(verse.id)]}
+							</p>
+						{/if}
 					</div>
 				{/each}
 			{/if}
@@ -864,5 +929,23 @@
 				<p class="text-sm text-red-400 mt-3">{sectionsError}</p>
 			{/if}
 		</div>
+	</div>
+{/if}
+
+<ConfirmModal
+	isOpen={pendingConfirm !== null}
+	title={pendingConfirm?.title}
+	message={pendingConfirm?.message}
+	confirmText={pendingConfirm?.confirmText}
+	onConfirm={runPendingConfirm}
+	onCancel={() => (pendingConfirm = null)}
+/>
+
+{#if actionError}
+	<div
+		role="alert"
+		class="fixed top-10 right-10 max-w-sm bg-red-500 text-white px-6 py-3 rounded-xl shadow-lg z-[110] font-bold text-sm"
+	>
+		{actionError}
 	</div>
 {/if}
