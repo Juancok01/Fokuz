@@ -137,10 +137,21 @@
 		pomodoroUI.isMaximized = false;
 	});
 
-	let showWidget = $derived(
-		!pomodoroUI.isMaximized && 
-		(pomodoro.running || pomodoro.awaitingAck || (pomodoro.remainingMs < (pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS)))
+	// El Pomodoro y la música son independientes: la barra flotante aparece
+	// si cualquiera de los dos está en uso, y muestra solo lo que aplica.
+	const pomodoroActive = $derived(
+		pomodoro.running || pomodoro.awaitingAck || (pomodoro.remainingMs < (pomodoro.phase === 'focus' ? FOCUS_MS : BREAK_MS))
 	);
+	const ambientActive = $derived(noiseRain || noiseBrown || noiseFire);
+	const musicActive = $derived(ytPlayer.currentPlaylistId !== null || ambientActive);
+	let showWidget = $derived(!pomodoroUI.isMaximized && (pomodoroActive || musicActive));
+
+	function stopAllMusic() {
+		ytPlayer.stop();
+		noiseRain = false;
+		noiseBrown = false;
+		noiseFire = false;
+	}
 
 	// The alarm audio is handled directly in the DOM
 	let audioAlarm: HTMLAudioElement;
@@ -685,12 +696,20 @@
 {:else if showWidget}
 	<!-- Minimized Floating Widget -->
 	<div class="fixed bottom-20 md:bottom-6 right-4 md:right-8 z-40 bg-[#0d1216]/90 backdrop-blur-md border border-brand-divider rounded-full pr-2 pl-6 py-2 shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-5">
+		{#if pomodoroActive}
 		<!-- Mini timer text -->
 		<div class="flex flex-col items-center justify-center min-w-[60px]">
 			<span class="text-[8px] font-bold {pomodoro.awaitingAck ? 'text-amber-400' : 'text-brand-accent'} uppercase tracking-wider">{pomodoro.phase === 'focus' ? 'Enfoque' : 'Descanso'}</span>
 			<span class="text-lg font-black text-brand-text tabular-nums leading-none">{formatPomodoroTime(pomodoro.remainingMs)}</span>
 		</div>
-		
+		{:else}
+		<!-- Solo música: nombre de la pista en lugar del reloj -->
+		<div class="flex flex-col justify-center min-w-0 max-w-[120px] md:max-w-[180px]">
+			<span class="text-[8px] font-bold text-brand-accent uppercase tracking-wider">{ytPlayer.isPlaying ? 'Sonando' : (ytPlayer.currentTrack ? 'En pausa' : 'Ambiente')}</span>
+			<span class="text-xs font-bold text-brand-text truncate" title={ytPlayer.currentTrack?.title}>{ytPlayer.currentTrack?.title ?? 'Sonido ambiente'}</span>
+		</div>
+		{/if}
+
 		<div class="w-px h-8 bg-brand-divider mx-1"></div>
 		
 		<div class="flex items-center gap-0.5 text-brand-text-muted">
@@ -715,7 +734,12 @@
 		<div class="w-px h-8 bg-brand-divider mx-1"></div>
 		
 		<div class="flex items-center gap-2">
-			{#if pomodoro.awaitingAck}
+			{#if !pomodoroActive}
+				<!-- Solo música: no hay controles del reloj; se puede cerrar el reproductor -->
+				<button class="w-10 h-10 flex items-center justify-center rounded-full text-brand-text-muted hover:text-red-400 hover:bg-brand-surface-elevated transition-colors" onclick={stopAllMusic} title="Detener música" aria-label="Detener música">
+					<X class="w-5 h-5" />
+				</button>
+			{:else if pomodoro.awaitingAck}
 				<button class="w-10 h-10 rounded-full bg-amber-400 text-[#070b0e] flex items-center justify-center hover:scale-105 transition-transform shadow-[0_0_10px_rgba(251,191,36,0.5)]" onclick={acknowledgePomodoro}>
 					<Check class="w-5 h-5" strokeWidth={3} />
 				</button>
@@ -729,7 +753,7 @@
 				</button>
 			{/if}
 
-			<button class="w-10 h-10 flex items-center justify-center rounded-full text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors" onclick={() => pomodoroUI.isMaximized = true}>
+			<button class="w-10 h-10 flex items-center justify-center rounded-full text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-elevated transition-colors" onclick={() => pomodoroUI.isMaximized = true} title="Abrir" aria-label="Abrir pantalla de enfoque">
 				<Maximize2 class="w-5 h-5" />
 			</button>
 		</div>

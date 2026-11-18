@@ -228,6 +228,18 @@ class YouTubePlayer {
 		}
 	}
 
+	/** Detiene la música y suelta la playlist activa (oculta el reproductor flotante). */
+	stop() {
+		this.pause();
+		this.currentPlaylistId = null;
+		this.currentTrackIndex = 0;
+	}
+
+	/** Pista que está cargada ahora, o null si no hay playlist activa. */
+	get currentTrack(): PlaylistItem | null {
+		return this.getActivePlaylist()?.tracks[this.currentTrackIndex] ?? null;
+	}
+
 	togglePlay() {
 		if (this.isPlaying) this.pause();
 		else this.play();
